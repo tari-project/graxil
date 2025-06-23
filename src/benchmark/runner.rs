@@ -6,46 +6,37 @@
 // via pull requests to the project repository.
 //
 // File: src/benchmark/runner.rs
-// Version: 1.0.0
+// Version: 1.0.28
 // Developer: OIEIEIO <oieieio@protonmail.com>
 //
-// This file implements the benchmark execution engine for testing SHA3x mining
+// This file implements the benchmark execution engine for testing SHA3x and SHA-256 mining
 // performance without pool connectivity. It coordinates benchmark threads and
 // collects performance metrics for optimization analysis.
-//
-// Tree Location:
-// - src/benchmark/runner.rs (benchmark execution engine)
-// - Depends on: core, miner/stats, benchmark/jobs
 
-use crate::core::types::{BenchmarkResult, MiningJob};
-use crate::benchmark::jobs::{get_job_by_difficulty};
+use crate::core::types::{BenchmarkResult, MiningJob, Algorithm};
+use crate::benchmark::jobs::{get_job_by_difficulty_and_algo, calculate_difficulty_from_nbits, get_max_target};
 use crate::benchmark::profiler::ProfilerData;
 use crate::miner::stats::{MinerStats, ThreadStats};
+use crate::core::difficulty::{bits_to_target, U256};
 use crate::Result;
 use num_cpus;
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU64, Ordering}};
+use std::sync::{Arc, atomic::{AtomicBool, AtomicU64, Ordering}, Mutex};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 use std::thread;
+use std::collections::HashSet;
 use tokio::sync::broadcast;
 use tracing::{info, debug};
+use hex;
 
 /// Configuration for benchmark execution
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
-    /// Number of threads to use (0 = auto-detect)
     pub thread_count: usize,
-    
-    /// Duration to run benchmark
     pub duration: Duration,
-    
-    /// Target difficulty for share finding
-    pub target_difficulty: u64,
-    
-    /// Enable detailed profiling
+    pub target_difficulty: f64,
+    pub algorithm: Algorithm,
     pub enable_profiling: bool,
-    
-    /// Report interval for progress updates
     pub report_interval: Duration,
 }
 
@@ -57,83 +48,72 @@ pub struct BenchmarkRunner {
 }
 
 impl BenchmarkRunner {
-    /// Create a new benchmark runner
-    pub fn new(threads: usize, duration_secs: u64, difficulty: u64) -> Self {
-        let actual_threads = if threads == 0 {
-            num_cpus::get()
-        } else {
-            threads
-        };
-
+    pub fn new(threads: usize, duration_secs: u64, difficulty: f64, algorithm: Algorithm) -> Self {
+        let actual_threads = if threads == 0 { num_cpus::get() } else { threads };
         let config = BenchmarkConfig {
             thread_count: actual_threads,
-            duration: Duration::from_secs(duration_secs),
+            duration: if difficulty > 1000000.0 { Duration::from_secs(duration_secs * 10) } else { Duration::from_secs(duration_secs) },
             target_difficulty: difficulty,
+            algorithm,
             enable_profiling: true,
             report_interval: Duration::from_secs(5),
         };
-
-        Self {
-            config,
-            stats: Arc::new(MinerStats::new(actual_threads)),
-            profiler: Arc::new(ProfilerData::new()),
-        }
+        let mut stats = MinerStats::new(actual_threads);
+        stats.set_algorithm(algorithm);
+        Self { config, stats: Arc::new(stats), profiler: Arc::new(ProfilerData::new()) }
     }
 
-    /// Run the benchmark and return results
     pub async fn run(&self) -> Result<BenchmarkResult> {
-        info!("🧪 Starting benchmark with {} threads", self.config.thread_count);
-        
-        // Create benchmark job
-        let benchmark_job = get_job_by_difficulty(self.config.target_difficulty);
+        info!("🧪 Starting benchmark with {} threads, algo: {:?}", self.config.thread_count, self.config.algorithm);
+        let benchmark_job = get_job_by_difficulty_and_algo(self.config.target_difficulty, self.config.algorithm);
         info!("📋 Using benchmark job: {}", benchmark_job.description);
 
-        // Setup communication channels
         let (job_tx, _) = broadcast::channel::<MiningJob>(16);
         let (share_tx, share_rx): (Sender<BenchmarkShare>, Receiver<BenchmarkShare>) = mpsc::channel();
-
-        // Shared state
         let should_stop = Arc::new(AtomicBool::new(false));
         let total_hashes = Arc::new(AtomicU64::new(0));
         let shares_found = Arc::new(AtomicU64::new(0));
+        let seen_nonces = Arc::new(Mutex::new(HashSet::new()));
+        let share_tx = Arc::new(Mutex::new(share_tx));
 
-        // Start benchmark threads
         let mut thread_handles = Vec::new();
         let thread_count = self.config.thread_count;
         for thread_id in 0..thread_count {
             let _job_rx = job_tx.subscribe();
-            let share_tx = share_tx.clone();
+            let share_tx = Arc::clone(&share_tx);
             let should_stop = Arc::clone(&should_stop);
             let total_hashes = Arc::clone(&total_hashes);
             let thread_stats = Arc::clone(&self.stats.thread_stats[thread_id]);
             let benchmark_job = benchmark_job.clone();
+            let seen_nonces = Arc::clone(&seen_nonces);
 
             let handle = thread::spawn(move || {
-                benchmark_thread(
-                    thread_id,
-                    thread_count,
-                    benchmark_job.mining_job,
-                    should_stop,
-                    total_hashes,
-                    share_tx,
-                    thread_stats,
-                );
+                benchmark_thread(thread_id, thread_count, benchmark_job.mining_job, should_stop, total_hashes, share_tx, thread_stats, seen_nonces);
+                debug!("Thread {}: Terminated", thread_id);
             });
             thread_handles.push(handle);
         }
 
-        // Start share collector
         let shares_found_collector = Arc::clone(&shares_found);
+        let should_stop_collector = Arc::clone(&should_stop);
         let share_handle = thread::spawn(move || {
-            while let Ok(share) = share_rx.recv() {
-                shares_found_collector.fetch_add(1, Ordering::Relaxed);
-                debug!("💎 Benchmark share found: difficulty {}, thread {}", 
-                    share.difficulty, share.thread_id);
+            loop {
+                match share_rx.recv_timeout(Duration::from_millis(100)) {
+                    Ok(share) => {
+                        shares_found_collector.fetch_add(1, Ordering::Relaxed);
+                        debug!("💎 Benchmark share found: difficulty {}, thread {}", share.difficulty, share.thread_id);
+                    }
+                    Err(_) => {
+                        if should_stop_collector.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        // Continue waiting if benchmark is still running
+                    }
+                }
             }
+            debug!("Share collector thread stopping");
         });
 
-        // Start progress reporter
-        let _stats_clone = Arc::clone(&self.stats);
         let total_hashes_reporter = Arc::clone(&total_hashes);
         let shares_found_reporter = Arc::clone(&shares_found);
         let should_stop_reporter = Arc::clone(&should_stop);
@@ -142,75 +122,58 @@ impl BenchmarkRunner {
         let progress_handle = thread::spawn(move || {
             let mut last_hashes = 0u64;
             let mut last_time = Instant::now();
-
             while !should_stop_reporter.load(Ordering::Relaxed) {
                 thread::sleep(report_interval);
-                
-                // Check again after sleep to exit quickly
-                if should_stop_reporter.load(Ordering::Relaxed) {
-                    break;
-                }
-                
+                if should_stop_reporter.load(Ordering::Relaxed) { break; }
                 let current_hashes = total_hashes_reporter.load(Ordering::Relaxed);
                 let current_shares = shares_found_reporter.load(Ordering::Relaxed);
                 let now = Instant::now();
-                
                 let hashes_delta = current_hashes - last_hashes;
                 let time_delta = now.duration_since(last_time).as_secs_f64();
-                
                 if time_delta > 0.0 {
                     let hashrate = hashes_delta as f64 / time_delta;
-                    info!("📊 Progress: {:.2} MH/s | Total: {} MH | Shares: {}", 
-                        hashrate / 1_000_000.0,
-                        current_hashes / 1_000_000,
-                        current_shares
-                    );
+                    info!("📊 Progress: {:.2} MH/s | Total: {} MH | Shares: {}", hashrate / 1_000_000.0, current_hashes / 1_000_000, current_shares);
                 }
-                
                 last_hashes = current_hashes;
                 last_time = now;
             }
             debug!("Progress reporter thread stopping");
         });
 
-        // Send job to all threads
         let _ = job_tx.send(benchmark_job.mining_job);
-
-        // Run for specified duration with proper thread coordination
         let start_time = Instant::now();
-        
-        // Wait for duration while allowing progress reports
         while start_time.elapsed() < self.config.duration {
-            std::thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(100));
         }
 
-        // Stop all threads
         should_stop.store(true, Ordering::Relaxed);
-        
-        // Give threads a moment to finish
-        std::thread::sleep(Duration::from_millis(500));
-        
-        // Wait for threads to finish with timeout
+        debug!("Signaled threads to stop");
+        thread::sleep(Duration::from_millis(500));
+
         info!("🛑 Stopping benchmark threads...");
-        for handle in thread_handles {
-            let _ = handle.join();
+        for (i, handle) in thread_handles.into_iter().enumerate() {
+            if let Err(e) = handle.join() {
+                debug!("Thread {} failed to join: {:?}", i, e);
+            } else {
+                debug!("Thread {} joined successfully", i);
+            }
         }
-        
-        // Stop and wait for share collector
-        drop(share_tx); // Close the channel to stop share collector
-        let _ = share_handle.join();
-        
-        // Wait for progress reporter to finish
-        let _ = progress_handle.join();
+
+        let share_tx = share_tx.lock().unwrap();
+        drop(share_tx);
+        if let Err(e) = share_handle.join() {
+            debug!("Share collector thread failed to join: {:?}", e);
+        }
+        if let Err(e) = progress_handle.join() {
+            debug!("Progress reporter thread failed to join: {:?}", e);
+        }
         
         info!("✅ All threads stopped");
 
-        // Calculate final results
         let end_time = Instant::now();
-        let actual_duration = end_time - start_time;
+        let actual_duration = end_time.duration_since(start_time);
         let final_hashes = total_hashes.load(Ordering::Relaxed);
         let final_shares = shares_found.load(Ordering::Relaxed);
-
         let average_hashrate = final_hashes as f64 / actual_duration.as_secs_f64();
         let peak_hashrate = self.calculate_peak_hashrate();
 
@@ -225,7 +188,6 @@ impl BenchmarkRunner {
         })
     }
 
-    /// Calculate peak hashrate from thread statistics
     fn calculate_peak_hashrate(&self) -> f64 {
         let mut peak = 0.0;
         for thread_stat in &self.stats.thread_stats {
@@ -236,82 +198,187 @@ impl BenchmarkRunner {
     }
 }
 
-/// Benchmark-specific share structure
 #[derive(Debug, Clone)]
 struct BenchmarkShare {
-    difficulty: u64,
+    difficulty: f64,
     thread_id: usize,
 }
 
-/// Benchmark mining thread function
 fn benchmark_thread(
     thread_id: usize,
     num_threads: usize,
     job: MiningJob,
     should_stop: Arc<AtomicBool>,
     total_hashes: Arc<AtomicU64>,
-    share_tx: Sender<BenchmarkShare>,
+    share_tx: Arc<Mutex<Sender<BenchmarkShare>>>,
     thread_stats: Arc<ThreadStats>,
+    seen_nonces: Arc<Mutex<HashSet<u32>>>,
 ) {
-    use crate::core::{calculate_difficulty, sha3x::sha3x_hash_with_nonce_batch};
+    use crate::core::{sha3x::sha3x_hash_with_nonce_batch, sha256::sha256d_hash_with_nonce_batch};
     use rand::{rngs::ThreadRng, Rng};
+    use sha2::{Sha256, Digest};
 
     let mut rng: ThreadRng = rand::thread_rng();
     let mut local_hash_count = 0u64;
     let mut last_report = Instant::now();
 
-    // Start with random nonce for this thread
-    let mut nonce = rng.r#gen::<u64>();
-    nonce = nonce.wrapping_add(thread_id as u64);
-
-    while !should_stop.load(Ordering::Relaxed) {
-        // Process in batches of 4 for efficiency
-        for _ in (0..10000).step_by(4) {
-            let batch_results = sha3x_hash_with_nonce_batch(&job.mining_hash, nonce);
+    match job.algo {
+        Algorithm::Sha3x => {
+            let mut nonce: u64 = rng.r#gen();
+            nonce = nonce.wrapping_add(thread_id as u64);
+            let target_difficulty = job.target_difficulty as f64;
             
-            for (hash, _batch_nonce) in batch_results.iter() {
-                let difficulty = calculate_difficulty(hash);
-                local_hash_count += 1;
-
-                // Check if we found a share
-                if difficulty >= job.target_difficulty {
-                    let share = BenchmarkShare {
-                        difficulty,
-                        thread_id,
-                    };
-                    
-                    thread_stats.record_share(difficulty, true);
-                    let _ = share_tx.send(share);
+            // Get the correct max target for SHA3x
+            let max_target = get_max_target(Algorithm::Sha3x);
+            
+            // Log the max target once per thread
+            if thread_id == 0 {
+                debug!("Thread 0: SHA3x max_target: {:064x}", max_target);
+                debug!("Thread 0: Target difficulty: {}", target_difficulty);
+            }
+            
+            while !should_stop.load(Ordering::Relaxed) {
+                for _ in (0..10000).step_by(4) {
+                    if should_stop.load(Ordering::Relaxed) { break; }
+                    let batch_results = sha3x_hash_with_nonce_batch(&job.mining_hash, nonce);
+                    for (hash, _batch_nonce) in batch_results.iter() {
+                        let hash_u256 = U256::from_big_endian(hash);
+                        let difficulty = if !hash_u256.is_zero() {
+                            (max_target / hash_u256).low_u64() as f64
+                        } else {
+                            0.0
+                        };
+                        local_hash_count += 1;
+                        
+                        // Log first few hash difficulties for debugging
+                        if thread_id == 0 && local_hash_count <= 10 {
+                            debug!("Thread 0: Hash {}: difficulty = {}, target = {}", 
+                                local_hash_count, difficulty, target_difficulty);
+                        }
+                        
+                        if difficulty >= target_difficulty {
+                            let share = BenchmarkShare { difficulty, thread_id };
+                            thread_stats.record_share(difficulty as u64, true);
+                            if let Ok(tx) = share_tx.lock() {
+                                let _ = tx.send(share);
+                            }
+                            info!("🎯 Thread {}: Found SHA3x share! Difficulty: {}", thread_id, difficulty);
+                        }
+                    }
+                    nonce = nonce.wrapping_add((4 * num_threads) as u64);
+                }
+                if last_report.elapsed() > Duration::from_secs(1) {
+                    thread_stats.update_hashrate(local_hash_count);
+                    total_hashes.fetch_add(local_hash_count, Ordering::Relaxed);
+                    local_hash_count = 0;
+                    last_report = Instant::now();
                 }
             }
-
-            nonce = nonce.wrapping_add((4 * num_threads) as u64);
-
-            // Early exit check
-            if should_stop.load(Ordering::Relaxed) {
-                break;
+        }
+        Algorithm::Sha256 => {
+            let nonce: u32 = rng.r#gen();
+            let nonce_start = nonce.wrapping_add(thread_id as u32);
+            let mut header = [0u8; 80];
+            if job.mining_hash.len() >= 80 {
+                header.copy_from_slice(&job.mining_hash[..80]);
+            } else {
+                debug!("Thread {}: Invalid mining_hash length for SHA-256: {}, stopping thread", thread_id, job.mining_hash.len());
+                return;
+            }
+            static HEADER_LOGGED: [std::sync::atomic::AtomicBool; 36] = [
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+                std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false),
+            ];
+            if !HEADER_LOGGED[thread_id].swap(true, Ordering::Relaxed) {
+                debug!("Thread {}: Full header: {}", thread_id, hex::encode(&header));
+            }
+            let (target_value, target_difficulty) = if let Some(nbits) = job.nbits {
+                let target = bits_to_target(nbits);
+                let difficulty = calculate_difficulty_from_nbits(nbits);
+                debug!("Thread {}: SHA-256 nbits: {:08x}, target: {:064x}, difficulty: {:.10}", thread_id, nbits, target, difficulty);
+                if thread_id == 0 {
+                    let target_bytes = target.to_big_endian();
+                    debug!("Thread 0: Full target: {}", hex::encode(&target_bytes));
+                }
+                (target, difficulty)
+            } else {
+                debug!("Thread {}: No nbits provided for SHA-256 job, stopping thread", thread_id);
+                return;
+            };
+            let mut shares_found_by_thread = 0u64;
+            let mut logged_hashes = 0;
+            let mut nonce = nonce_start;
+            while !should_stop.load(Ordering::Relaxed) {
+                for _ in (0..10000).step_by(4) {
+                    if should_stop.load(Ordering::Relaxed) { break; }
+                    let batch_results = sha256d_hash_with_nonce_batch(&header, nonce);
+                    for (hash, batch_nonce) in batch_results.iter() {
+                        local_hash_count += 1;
+                        let hash_u256 = U256::from_big_endian(hash);
+                        if thread_id == 0 && logged_hashes < 10 {
+                            debug!("Thread 0: Hash bytes: {}", hex::encode(hash));
+                            debug!("Thread 0: U256 hash: {:064x}, Nonce: {:08x}, Target: {:064x}", hash_u256, batch_nonce, target_value);
+                            let diff = if target_value > hash_u256 { target_value - hash_u256 } else { hash_u256 - target_value };
+                            debug!("Thread 0: Target - Hash difference: {:064x}", diff);
+                            if logged_hashes == 0 {
+                                let mut hasher = Sha256::new();
+                                hasher.update(&header);
+                                let first_hash = hasher.finalize();
+                                debug!("Thread 0: First SHA-256: {}", hex::encode(&first_hash));
+                            }
+                            logged_hashes += 1;
+                        }
+                        if hash_u256 <= target_value {
+                            let mut nonces = seen_nonces.lock().unwrap();
+                            if !nonces.contains(batch_nonce) {
+                                nonces.insert(*batch_nonce);
+                                let difficulty = target_difficulty;
+                                let share = BenchmarkShare { difficulty, thread_id };
+                                thread_stats.record_share(difficulty as u64, true);
+                                if let Ok(tx) = share_tx.lock() {
+                                    let _ = tx.send(share);
+                                }
+                                shares_found_by_thread += 1;
+                                debug!("🎯 Thread {}: Share attempt #{}! Difficulty: {:.10}, Hash: {}, Nonce: {}, Target: {:064x}", 
+                                    thread_id, shares_found_by_thread, difficulty, hex::encode(&hash[..8]), batch_nonce, target_value);
+                            }
+                        }
+                    }
+                    nonce = nonce.wrapping_add((4 * num_threads) as u32);
+                }
+                if last_report.elapsed() > Duration::from_secs(1) {
+                    thread_stats.update_hashrate(local_hash_count);
+                    total_hashes.fetch_add(local_hash_count, Ordering::Relaxed);
+                    local_hash_count = 0;
+                    last_report = Instant::now();
+                }
             }
         }
-
-        // Update statistics every second
-        if last_report.elapsed() > Duration::from_secs(1) {
-            thread_stats.update_hashrate(local_hash_count);
-            total_hashes.fetch_add(local_hash_count, Ordering::Relaxed);
-            local_hash_count = 0;
-            last_report = Instant::now();
-        }
     }
-
-    // Final update
     thread_stats.update_hashrate(local_hash_count);
     total_hashes.fetch_add(local_hash_count, Ordering::Relaxed);
 }
 
 // Changelog:
-// - v1.0.0 (2025-06-14): Initial benchmark runner implementation.
-//   - Purpose: Provides isolated mining performance testing without pool
-//     connectivity, enabling optimization validation and performance profiling.
-//   - Features: Configurable thread count, duration, and difficulty targeting,
-//     with real-time progress reporting and comprehensive result collection.
-//   - Note: Uses batch processing by default and provides detailed metrics
-//     for analyzing the effectiveness of mining optimizations.
+// - v1.0.28 (2025-06-17): Fixed SHA3x share validation and share collector thread.
+//   - Added get_max_target import from jobs.rs to use algorithm-specific max targets.
+//   - Fixed SHA3x to use full 256-bit max target (all 0xFF) instead of Bitcoin's max target.
+//   - Fixed share collector thread to continue running until benchmark completes.
+//   - Added debug logging for max target and difficulty calculations.
+//   - Compatible with main.rs v1.0.7, jobs.rs v1.0.14, types.rs v1.0.5, sha256.rs v1.0.1, difficulty.rs v1.2.4.

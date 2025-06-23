@@ -6,12 +6,13 @@
 // via pull requests to the project repository.
 //
 // File: src/core/types.rs
-// Version: 1.0.2
+// Version: 1.1.1-web
 // Developer: OIEIEIO <oieieio@protonmail.com>
 //
 // This file defines core data structures for the SHA3x miner, located in the
 // core subdirectory. It includes types for command-line arguments, pool jobs,
-// mining jobs, shares, and related protocol structures.
+// mining jobs, shares, and related protocol structures, supporting SHA3x
+// (Tari), SV2 testing, and web dashboard functionality.
 //
 // Tree Location:
 // - src/core/types.rs (core data structures)
@@ -20,35 +21,46 @@
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
+/// Mining algorithm variants
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Algorithm {
+    Sha3x,
+    Sha256,
+}
+
 /// Command-line arguments for the SHA3x miner
 #[derive(Parser, Debug)]
 #[command(
     name = "sha3x-miner",
     author = "SHA3x Mining Team",
     version = "1.0.0",
-    about = "High-performance SHA3x (Tari) CPU miner with benchmarking capabilities",
-    long_about = "SHA3x Miner is a high-performance CPU miner for the Tari blockchain using the SHA3x algorithm.\n\
-                  It supports both pool mining and standalone benchmarking for performance testing.\n\n\
-                  MINING: Requires wallet address and pool connection\n\
-                  BENCHMARK: Tests hardware performance without pool connection\n\n\
+    about = "High-performance SHA3x (Tari) CPU miner with SV2 testing capabilities",
+    long_about = "SHA3x Miner is a high-performance CPU miner supporting SHA3x for the Tari blockchain.\n\
+                  It supports pool mining, standalone benchmarking, SV2 protocol testing, and web dashboard.\n\n\
+                  MINING: Requires wallet address, pool connection, and algorithm selection\n\
+                  BENCHMARK: Tests hardware performance without pool connection\n\
+                  SV2 TEST: Tests Noise protocol connection to Stratum V2 JDS\n\
+                  WEB DASHBOARD: Real-time mining statistics and charts at http://localhost:8080\n\n\
                   Examples:\n\
-                    Mining:     sha3x-miner -u YOUR_WALLET -o pool.tari.com:4200 --threads 6\n\
-                    Benchmark:  sha3x-miner --benchmark --threads 72 --benchmark-duration 60 --benchmark-difficulty 100000\n\n\
+                    SHA3x Mining: sha3x-miner -u YOUR_TARI_WALLET -o pool.tari.com:4200 --algo sha3x --threads 6\n\
+                    Mining with Dashboard: sha3x-miner -u YOUR_TARI_WALLET -o pool.tari.com:4200 --algo sha3x --web\n\
+                    Benchmark: sha3x-miner --benchmark --algo sha3x --threads 72 --benchmark-duration 60 --benchmark-difficulty 100000\n\
+                    SV2 Test: sha3x-miner --test-sv2 --pool 127.0.0.1:34254\n\n\
                   For detailed help, use: sha3x-miner --help"
 )]
 pub struct Args {
-    /// Tari wallet address for receiving mining rewards (starts with '12' or '14')
-    /// Example: 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW
+    /// Wallet address for receiving mining rewards (Tari: starts with '12' or '14')
+    /// Examples: Tari: 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW
     #[arg(
         short = 'u', 
         long = "wallet",
         value_name = "ADDRESS",
-        help = "Tari wallet address for mining rewards"
+        help = "Wallet address for mining rewards"
     )]
     pub wallet: Option<String>,
 
     /// Mining pool address in format hostname:port or ip:port
-    /// Examples: pool.tari.com:4200, tari-pool.com:4200, 192.168.1.100:4200
+    /// Examples: pool.tari.com:4200, localhost:34255, 192.168.1.100:4200, 127.0.0.1:34254 (JDS)
     #[arg(
         short = 'o', 
         long = "pool",
@@ -111,6 +123,16 @@ pub struct Args {
     )]
     pub tui: bool,
 
+    /// Enable real-time web dashboard at http://localhost:8080
+    /// Provides web-based mining statistics with live charts and graphs
+    /// Includes hashrate trends, thread performance, share analytics, and efficiency metrics
+    #[arg(
+        long, 
+        default_value = "false",
+        help = "Enable real-time web dashboard with live charts at http://localhost:8080"
+    )]
+    pub web: bool,
+
     /// Run in benchmark mode (no pool connection required)
     /// Tests hardware performance and finds optimal settings
     /// Useful for: hardware testing, optimization, comparison
@@ -133,52 +155,97 @@ pub struct Args {
     pub benchmark_duration: u64,
 
     /// Benchmark target difficulty (affects share finding frequency)
-    /// 1,000 = very easy (many shares), 100,000 = medium, 1,000,000 = realistic, 10,000,000 = hard
-    /// Higher values = easier to find shares for testing
+    /// 1.0 = very easy (many shares), 0.1 = medium, 0.0001 = realistic
     #[arg(
         long, 
-        default_value = "1000000",
+        default_value = "1.0",
         value_name = "DIFFICULTY",
-        help = "Benchmark difficulty [1K=easy, 100K=medium, 1M=realistic, 10M=hard]"
+        help = "Benchmark difficulty [1.0=easy, 0.1=medium, 0.0001=realistic]"
     )]
-    pub benchmark_difficulty: u64,
+    pub benchmark_difficulty: f64,
+
+    /// Mining algorithm to use
+    /// Examples: sha3x (Tari)
+    #[arg(
+        long,
+        default_value = "sha3x",
+        value_name = "ALGO",
+        help = "Mining algorithm (sha3x)"
+    )]
+    pub algo: String,
+
+    /// Test SV2 Noise protocol connection to JDS
+    /// Tests encrypted connection establishment without mining
+    /// Useful for: SV2 setup verification, connection troubleshooting
+    #[arg(
+        long, 
+        default_value = "false",
+        help = "Test SV2 Noise connection to JDS"
+    )]
+    pub test_sv2: bool,
 }
 
 /// Raw job data received from the mining pool
-/// This matches the Tari Stratum protocol format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PoolJob {
-    /// Hex-encoded block header template (32 bytes when decoded)
-    pub blob: String,
-    
     /// Unique job identifier from the pool
     pub job_id: String,
     
     /// Hex-encoded target difficulty (8 bytes, little-endian)
     pub target: String,
     
-    /// Mining algorithm (should be "sha3x" for Tari)
+    /// Mining algorithm (sha3x for Tari)
     pub algo: String,
     
     /// Current blockchain height
     pub height: u64,
     
-    /// Optional seed hash (used for algorithm verification)
-    pub seed_hash: Option<String>,
-    
     /// Optional difficulty value (some pools send this directly)
     #[serde(default)]
     pub difficulty: Option<u64>,
+    
+    // SHA3X-specific fields
+    /// Hex-encoded block header template (32 bytes when decoded, SHA3X only)
+    #[serde(default)]
+    pub blob: Option<String>,
+    
+    /// Optional seed hash (used for SHA3X algorithm verification)
+    #[serde(default)]
+    pub seed_hash: Option<String>,
+    
+    // Legacy SHA-256-specific fields (kept for compatibility)
+    /// Previous block hash (hex, 32 bytes, legacy)
+    #[serde(default)]
+    pub prev_hash: Option<String>,
+    
+    /// Merkle root (hex, 32 bytes, legacy)
+    #[serde(default)]
+    pub merkle_root: Option<String>,
+    
+    /// Block version (legacy)
+    #[serde(default)]
+    pub version: Option<u32>,
+    
+    /// Timestamp (legacy)
+    #[serde(default)]
+    pub ntime: Option<u32>,
+    
+    /// Difficulty bits (legacy)
+    #[serde(default)]
+    pub nbits: Option<u32>,
+    
+    /// Merkle path hashes (hex, array of 32-byte hashes, legacy)
+    #[serde(default)]
+    pub merkle_path: Option<Vec<String>>,
 }
 
 /// Internal representation of a mining job
-/// This is the processed version of PoolJob ready for mining threads
 #[derive(Debug, Clone)]
 pub struct MiningJob {
     /// Job identifier (matches PoolJob.job_id)
     pub job_id: String,
     
-    /// Decoded mining hash/header template (32 bytes)
+    /// Decoded mining hash/header template (32 bytes for SHA3X)
     pub mining_hash: Vec<u8>,
     
     /// Target difficulty as u64 (converted from hex target)
@@ -186,6 +253,31 @@ pub struct MiningJob {
     
     /// Blockchain height for this job
     pub height: u64,
+    
+    /// Mining algorithm
+    pub algo: Algorithm,
+    
+    // Legacy SHA-256-specific fields (kept for compatibility)
+    /// Previous block hash (32 bytes, legacy)
+    pub prev_hash: Option<Vec<u8>>,
+    
+    /// Merkle root (32 bytes, legacy)
+    pub merkle_root: Option<Vec<u8>>,
+    
+    /// Block version (legacy)
+    pub version: Option<u32>,
+    
+    /// Timestamp (legacy)
+    pub ntime: Option<u32>,
+    
+    /// Difficulty bits (legacy)
+    pub nbits: Option<u32>,
+    
+    /// Merkle path hashes (array of 32-byte hashes, legacy)
+    pub merkle_path: Option<Vec<Vec<u8>>>,
+    
+    /// Target bytes for legacy support (32 bytes, little-endian)
+    pub target: Option<[u8; 32]>,
 }
 
 /// Represents a found share ready for submission
@@ -291,6 +383,11 @@ pub struct BenchmarkResult {
 impl Args {
     /// Validate arguments and return helpful errors
     pub fn validate(&self) -> Result<(), String> {
+        // Skip validation for SV2 test mode
+        if self.test_sv2 {
+            return Ok(());
+        }
+
         if !self.benchmark {
             if self.wallet.is_none() {
                 return Err("Wallet address is required for mining mode. Use --wallet YOUR_ADDRESS".to_string());
@@ -301,15 +398,19 @@ impl Args {
             
             // Validate wallet address format
             if let Some(ref wallet) = self.wallet {
-                if wallet.len() < 80 {
-                    return Err("Tari wallet address is too short (minimum 80 characters)".to_string());
-                }
-                if !wallet.starts_with("12") && !wallet.starts_with("14") {
-                    return Err("Tari wallet address must start with '12' (one-sided) or '14' (interactive)".to_string());
-                }
-                // Basic character validation - Tari addresses use Base58
-                if !wallet.chars().all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c)) {
-                    return Err("Tari wallet address contains invalid characters (must be Base58)".to_string());
+                match self.algo.as_str() {
+                    "sha3x" => {
+                        if wallet.len() < 80 {
+                            return Err("Tari wallet address is too short (minimum 80 characters)".to_string());
+                        }
+                        if !wallet.starts_with("12") && !wallet.starts_with("14") {
+                            return Err("Tari wallet address must start with '12' (one-sided) or '14' (interactive)".to_string());
+                        }
+                        if !wallet.chars().all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c)) {
+                            return Err("Tari wallet address contains invalid characters (must be Base58)".to_string());
+                        }
+                    }
+                    _ => return Err("Only 'sha3x' algorithm is supported in this version".to_string()),
                 }
             }
             
@@ -327,6 +428,12 @@ impl Args {
                 }
             }
         }
+        
+        // Validate algorithm
+        match self.algo.as_str() {
+            "sha3x" => Ok(()),
+            _ => Err("Only 'sha3x' algorithm is supported in this version".to_string()),
+        }?;
         
         if self.benchmark_duration == 0 {
             return Err("Benchmark duration must be greater than 0 seconds".to_string());
@@ -388,23 +495,18 @@ impl BenchmarkResult {
 }
 
 // Changelog:
-// - v1.0.2 (2025-06-15): Enhanced help descriptions and validation.
-//   - Added comprehensive help text for all command-line arguments.
-//   - Enhanced Args::validate() with detailed wallet and pool validation.
-//   - Added value names and examples for better user experience.
-//   - Added long_about with usage examples and mode descriptions.
-// - v1.0.1 (2025-06-14): Added benchmark support.
-//   - Added benchmark, benchmark_duration, and benchmark_difficulty to Args.
-//   - Made wallet and pool optional for benchmark mode.
-//   - Added BenchmarkResult struct for performance metrics.
-//   - Added Args::validate() method for argument validation.
-//   - Added BenchmarkResult helper methods for calculations and formatting.
-// - v1.0.0 (2025-06-14): Extracted from monolithic main.rs.
-//   - Purpose: Defines core data structures for the SHA3x miner, including
-//     command-line arguments, pool jobs, mining jobs, shares, and protocol
-//     responses, used across the project.
-//   - Features: Provides types like Args for CLI parsing, PoolJob for pool
-//     communication, MiningJob for thread processing, and Share-related types
-//     for submission tracking. Supports serialization and TUI feature flags.
-//   - Note: This file is central to the miner's data model, ensuring consistent
-//     type usage for mining operations and pool interactions.
+// - v1.1.1-web (2025-06-22): Added web dashboard support.
+//   - Added web: bool field to Args struct for enabling web dashboard.
+//   - Updated help text and examples to include web dashboard usage.
+//   - Enhanced long_about to describe web dashboard functionality.
+//   - Maintained all existing SV2 testing and benchmark functionality.
+// - v1.1.0-sv2 (2025-06-20): Added SV2 testing support.
+//   - Added test_sv2: bool field to Args struct for SV2 connection testing.
+//   - Updated validation to skip checks for SV2 test mode.
+//   - Restricted algorithm support to SHA3x only (removed SHA-256).
+//   - Updated help text and examples to include SV2 testing.
+//   - Kept legacy SHA-256 fields for backward compatibility.
+// - v1.0.5 (2025-06-17): Fixed type mismatch for benchmark difficulty.
+//   - Changed Args::benchmark_difficulty from u64 to f64 to support decimals.
+//   - Updated default value to 1.0 and help text for decimal inputs.
+//   - Compatible with main.rs v1.0.7, runner.rs v1.0.24, jobs.rs v1.0.12.
