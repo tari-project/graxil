@@ -71,7 +71,7 @@ cargo run --release -- \
 cargo run --release -- \
   --algo sha3x \
   --wallet YOUR_TARI_WALLET \
-  --pool 127.0.0.1:7777\
+  --pool 148.163.124.162:6118 \
   --worker my-worker \
   --threads 32
 
@@ -219,7 +219,13 @@ cargo run --release -- --test-sv2 --pool 127.0.0.1:34254
 
 ```bash
 # Test SHA3x performance
-cargo run --release --   --algo sha3x --benchmark --threads 12 --benchmark-duration 30 --benchmark-difficulty 50000000
+cargo test test_sha3x_correctness -- --nocapture (WIP)
+
+# Test thread scaling
+cargo test test_thread_scaling -- --nocapture (WIP)
+
+# Test multi-algorithm support
+cargo test bench_ -- --nocapture (WIP)
 ```
 
 ## 🔧 Configuration Examples
@@ -255,12 +261,29 @@ cargo run --release -- \
 ```
 🚀 Starting SHA3x Miner
 📍 Pool: pool.sha3x.supportxtm.com:6118
-💳 Wallet: 125oh...9fPAW
+💳 Wallet: 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW
 👷 Worker: x99-cpu
 🧵 Threads: 18
 📊 Real-time dashboard will be available at: http://localhost:8080
+📈 Live charts accessible via the 'Live Charts' tab
+🔗 WebSocket endpoint: ws://localhost:8080/ws
+🌐 Starting web dashboard server...
+🌐 Web dashboard available at: http://localhost:8080
+📊 Real-time charts at: http://localhost:8080 (Live Charts tab)
 ✅ Connected to SHA3x pool
-📋 New job sent: abcd1234 (height: 123456, difficulty: 1,000,000)
+📤 Sent SHA3x login request
+🔐 SHA3x login request sent
+📊 MINER DASHBOARD - 786843f2a65d78c9
+├─ Algorithm: Sha3x
+├─ Current Hashrate: 0.00 H/s
+├─ Session Avg: 0.00 H/s
+├─ Shares: 0/0 (0.0% accepted)
+├─ Session Time: 0s
+├─ Active Threads: 0/18
+└─ Current Difficulty: 0
+✅ SHA3x login successful
+📋 New job sent: b273529473b72d95 (height: 35176, difficulty: 10.0B)
+✅ WebSocket client connected
 📊 Progress: 17.84 MH/s | Shares: 42
 ```
 
