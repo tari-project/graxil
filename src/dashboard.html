@@ -607,7 +607,7 @@
                             <span style="color: ${isLatest ? '#FFD700' : '#FFC107'};">${job.job_id}</span>
                             <span style="color: rgba(255,255,255,0.6); margin-left: 10px;">Height: ${job.block_height}</span>
                             <span style="color: rgba(255,255,255,0.6); margin-left: 10px;">Diff: ${formatNumber(job.difficulty)}</span>
-                            <span style="color: rgba(255,255,255,0.5); margin-left: 10px; font-size: 0.8rem;">${formatDuration(job.timestamp)} ago</span>
+                            <span style="color: rgba(255,255,255,0.5); margin-left: 10px; font-size: 0.8rem;">${formatDuration(Math.max(...recentJobs.map(j => j.timestamp)) - job.timestamp)} ago</span>
                         </div>
                     `;
                 }).reverse().join(''); // Reverse to show newest first
