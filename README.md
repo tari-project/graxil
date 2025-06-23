@@ -105,19 +105,21 @@ cargo run --release -- \
 ### Benchmarking
 
 ```bash
-# SHA3x performance test
+# SHA3x performance test with specific difficulty
 cargo run --release -- \
   --algo sha3x \
   --benchmark \
   --threads 32 \
-  --benchmark-duration 60
+  --benchmark-duration 60 \
+  --benchmark-difficulty 50000000
 
 # SHA256d performance test (experimental)
 cargo run --release -- \
   --algo sha256 \
   --benchmark \
   --threads 32 \
-  --benchmark-duration 60
+  --benchmark-duration 60 \
+  --benchmark-difficulty 1000000
 ```
 
 ## 🌐 Web Dashboard
@@ -175,7 +177,7 @@ sha3x-miner/
 Connect to pools using domain names instead of IP addresses:
 ```bash
 # Before (IP only)
---pool 148.163.124.162:6118
+--pool 142.127.107.24:7777
 
 # Now (DNS supported)
 --pool pool.sha3x.supportxtm.com:6118
@@ -210,7 +212,7 @@ Monitor your mining operation with live statistics:
 
 ```bash
 # Test SV2 connection
-cargo run --release -- --test-sv2 --pool 127.0.0.1:34254
+cargo run --release -- --test-sv2 --pool 127.0.0.1:34254 (WIP)
 ```
 
 ## 🧪 Testing and Validation
