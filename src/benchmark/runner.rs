@@ -6,7 +6,7 @@
 // via pull requests to the project repository.
 //
 // File: src/benchmark/runner.rs
-// Version: 1.0.28
+// Version: 1.0.29
 // Developer: OIEIEIO <oieieio@protonmail.com>
 //
 // This file implements the benchmark execution engine for testing SHA3x and SHA-256 mining
@@ -52,7 +52,7 @@ impl BenchmarkRunner {
         let actual_threads = if threads == 0 { num_cpus::get() } else { threads };
         let config = BenchmarkConfig {
             thread_count: actual_threads,
-            duration: if difficulty > 1000000.0 { Duration::from_secs(duration_secs * 10) } else { Duration::from_secs(duration_secs) },
+            duration: Duration::from_secs(duration_secs),
             target_difficulty: difficulty,
             algorithm,
             enable_profiling: true,
@@ -376,6 +376,11 @@ fn benchmark_thread(
 }
 
 // Changelog:
+// - v1.0.29 (2025-06-23): Fixed benchmark duration logic.
+//   - Removed confusing duration multiplier that was extending high-difficulty benchmarks by 10x
+//   - Now benchmark duration matches exactly what user specifies (30 seconds = 30 seconds)
+//   - Simplified BenchmarkConfig construction for clearer behavior
+//   - No functional changes to benchmark logic, just fixed timing
 // - v1.0.28 (2025-06-17): Fixed SHA3x share validation and share collector thread.
 //   - Added get_max_target import from jobs.rs to use algorithm-specific max targets.
 //   - Fixed SHA3x to use full 256-bit max target (all 0xFF) instead of Bitcoin's max target.

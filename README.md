@@ -219,13 +219,7 @@ cargo run --release -- --test-sv2 --pool 127.0.0.1:34254
 
 ```bash
 # Test SHA3x performance
-cargo test test_sha3x_correctness -- --nocapture
-
-# Test thread scaling
-cargo test test_thread_scaling -- --nocapture
-
-# Test multi-algorithm support
-cargo test bench_ -- --nocapture
+cargo run --release --   --algo sha3x --benchmark --threads 12 --benchmark-duration 30 --benchmark-difficulty 50000000
 ```
 
 ## 🔧 Configuration Examples
