@@ -544,7 +544,7 @@
             document.getElementById('uptime').textContent = uptime;
 
             // Update job information
-            updateJobInfo(data.current_job, data.recent_jobs);
+            updateJobInfo(data.current_job, data.recent_jobs, data);
 
             // Update shares displays
             updateRecentShares(data.recent_shares);
@@ -576,7 +576,7 @@
         }
 
         // Update job information display
-        function updateJobInfo(currentJob, recentJobs) {
+        function updateJobInfo(currentJob, recentJobs, data) {
             // Update current job
             const currentJobDiv = document.getElementById('current-job-info');
             if (currentJob) {
@@ -607,7 +607,7 @@
                             <span style="color: ${isLatest ? '#FFD700' : '#FFC107'};">${job.job_id}</span>
                             <span style="color: rgba(255,255,255,0.6); margin-left: 10px;">Height: ${job.block_height}</span>
                             <span style="color: rgba(255,255,255,0.6); margin-left: 10px;">Diff: ${formatNumber(job.difficulty)}</span>
-                            <span style="color: rgba(255,255,255,0.5); margin-left: 10px; font-size: 0.8rem;">${formatDuration(Math.max(...recentJobs.map(j => j.timestamp)) - job.timestamp)} ago</span>
+                            <span style="color: rgba(255,255,255,0.5); margin-left: 10px; font-size: 0.8rem;">${formatDuration(data.uptime - job.timestamp)} ago</span>
                         </div>
                     `;
                 }).reverse().join(''); // Reverse to show newest first
@@ -777,17 +777,36 @@
                 type: 'line',
                 data: {
                     labels: [],
-                    datasets: Array.from({length: 12}, (_, i) => ({
+                    datasets: Array.from({length: 72}, (_, i) => ({
                         label: `Thread ${i}`,
                         data: [],
                         borderColor: `hsl(${i * 30}, 70%, 60%)`,
                         backgroundColor: 'transparent',
                         borderWidth: 2,
-                        pointRadius: 0
+                        pointRadius: 0,
+                        hidden: true
                     }))
                 },
                 options: {
                     ...commonOptions,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                boxWidth: 6,
+                                boxHeight: 6,
+                                padding: 8,
+                                filter: function(legendItem, chartData) {
+                                    const datasetIndex = legendItem.datasetIndex;
+                                    const dataset = chartData.datasets[datasetIndex];
+                                    return !dataset.hidden && dataset.data.length > 0 && 
+                                           dataset.data[dataset.data.length - 1] > 0;
+                                }
+                            }
+                        }
+                    },
                     scales: {
                         ...commonOptions.scales,
                         y: {
@@ -921,13 +940,25 @@
 
             charts.threads.data.labels.push(timeLabel);
             
-            // Update each thread's data
+            // Update each thread's data and show/hide based on activity
             data.thread_hashrates.forEach((hashrate, index) => {
                 if (charts.threads.data.datasets[index]) {
                     const hashrateInMH = hashrate / 1000000;
                     charts.threads.data.datasets[index].data.push(hashrateInMH);
+                    
+                    // Show active threads, hide inactive ones
+                    if (hashrateInMH > 0) {
+                        charts.threads.data.datasets[index].hidden = false;
+                    } else {
+                        charts.threads.data.datasets[index].hidden = true;
+                    }
                 }
             });
+            
+            // Hide unused datasets
+            for (let i = data.thread_hashrates.length; i < charts.threads.data.datasets.length; i++) {
+                charts.threads.data.datasets[i].hidden = true;
+            }
             
             // Limit data points to keep chart readable
             const maxPoints = 60;
