@@ -6,20 +6,21 @@
 // via pull requests to the project repository.
 //
 // File: src/miner/stats/miner_stats.rs
-// Version: 1.1.0
+// Version: 1.3.0
 // Developer: OIEIEIO <oieieio@protonmail.com>
 //
 // This file implements miner-wide statistics tracking for the SHA3x miner,
 // located in the stats subdirectory of the miner module. It manages shares,
-// hashrate, activity logs, and job tracking for the entire miner.
+// hashrate, activity logs, job tracking, and GPU monitoring for the entire miner.
 //
 // Tree Location:
 // - src/miner/stats/miner_stats.rs (miner-wide statistics logic)
-// - Depends on: std, thread_stats, serde, sysinfo
+// - Depends on: std, thread_stats, gpu_info, serde, sysinfo
 
 use crate::core::types::Algorithm;
 use crate::pool::client::PoolClient;
 use super::thread_stats::ThreadStats;
+use super::gpu_info::GpuInfo;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,6 +55,7 @@ pub struct PoolInfo {
     pub connection_attempts: u32,
     pub uptime_seconds: Option<u64>,
 }
+
 #[derive(Serialize)]
 pub struct SystemInfo {
     pub cpu_usage: f32,
@@ -95,6 +97,7 @@ pub struct WebSocketData {
     pub top_shares: Vec<u64>,
     pub system_info: SystemInfo,
     pub pool_info: PoolInfo,
+    pub gpu_info: GpuInfo, // Added GPU info
 }
 
 #[derive(Serialize)]
@@ -122,6 +125,8 @@ pub struct MinerStats {
     recent_jobs: Arc<Mutex<VecDeque<JobInfo>>>,
     system: Arc<Mutex<System>>,
     pool_client: Option<Arc<PoolClient>>,
+    gpu_info: Arc<Mutex<GpuInfo>>, // Added GPU monitoring
+    gpu_last_refresh: Arc<Mutex<Instant>>, // Track GPU refresh timing
 }
 
 impl MinerStats {
@@ -152,6 +157,8 @@ impl MinerStats {
             recent_jobs: Arc::new(Mutex::new(VecDeque::with_capacity(5))),
             system: Arc::new(Mutex::new(System::new_all())),
             pool_client: None,
+            gpu_info: Arc::new(Mutex::new(GpuInfo::detect())), // Initialize GPU detection
+            gpu_last_refresh: Arc::new(Mutex::new(Instant::now())),
         }
     }
 
@@ -163,6 +170,23 @@ impl MinerStats {
     /// Set the pool client for connection tracking
     pub fn set_pool_client(&mut self, pool_client: Arc<PoolClient>) {
         self.pool_client = Some(pool_client);
+    }
+
+    /// Refresh GPU information if enough time has passed (every 5 seconds)
+    fn refresh_gpu_info_if_needed(&self) {
+        let mut last_refresh = self.gpu_last_refresh.lock().unwrap();
+        if last_refresh.elapsed() >= Duration::from_secs(5) {
+            let mut gpu_info = self.gpu_info.lock().unwrap();
+            gpu_info.refresh();
+            *last_refresh = Instant::now();
+            
+            if gpu_info.is_available() {
+                debug!("GPU info refreshed: {} at {}°C, {}% usage", 
+                       gpu_info.name, 
+                       gpu_info.temperature.unwrap_or(0.0),
+                       gpu_info.utilization.unwrap_or(0.0));
+            }
+        }
     }
 
     /// Update the current job and add it to recent jobs
@@ -273,6 +297,9 @@ impl MinerStats {
 
     /// Convert current miner statistics to WebSocket data format
     pub fn to_websocket_data(&self) -> WebSocketData {
+        // Refresh GPU info if needed
+        self.refresh_gpu_info_if_needed();
+        
         let shares_submitted = self.shares_submitted.load(Ordering::Relaxed);
         let shares_accepted = self.shares_accepted.load(Ordering::Relaxed);
         let shares_rejected = self.shares_rejected.load(Ordering::Relaxed);
@@ -402,7 +429,11 @@ impl MinerStats {
             }
         };
 
-        debug!("WebSocket data - Thread count: {}, Hashrates: {:?}", self.thread_stats.len(), thread_hashrates);
+        // Get GPU info
+        let gpu_info = self.gpu_info.lock().unwrap().clone();
+
+        debug!("WebSocket data - Thread count: {}, Hashrates: {:?}, GPU: {}", 
+               self.thread_stats.len(), thread_hashrates, gpu_info.name);
 
         WebSocketData {
             current_hashrate: self.get_total_hashrate() as u64,
@@ -429,6 +460,7 @@ impl MinerStats {
             top_shares,
             system_info,
             pool_info,
+            gpu_info, // Include GPU information
         }
     }
 
@@ -538,6 +570,14 @@ impl MinerStats {
         let active_threads = self.get_active_thread_count();
         let share_rate = self.get_share_rate_per_minute();
 
+        // Display GPU information if available
+        let gpu_info = self.gpu_info.lock().unwrap();
+        let gpu_status = if gpu_info.is_available() {
+            format!("{} ({})", gpu_info.name, gpu_info.format_utilization())
+        } else {
+            "No GPU detected".to_string()
+        };
+
         info!("📊 MINER DASHBOARD - {}", dashboard_id);
         info!("├─ Algorithm: {:?}", self.algo);
         info!("├─ Current Hashrate: {}", Self::format_hashrate(hashrate));
@@ -553,7 +593,8 @@ impl MinerStats {
         info!("├─ Average Share Time: {}", Self::format_duration(avg_share_time));
         info!("├─ Session Time: {}", Self::format_duration(session_time));
         info!("├─ Active Threads: {}/{}", active_threads, self.thread_stats.len());
-        info!("└─ Current Difficulty: {}", Self::format_number(current_difficulty));
+        info!("├─ Current Difficulty: {}", Self::format_number(current_difficulty));
+        info!("└─ GPU Status: {}", gpu_status);
     }
 }
 
@@ -589,6 +630,16 @@ fn get_temperatures(components: &Components) -> (Option<f32>, Option<f32>) {
 }
 
 // Changelog:
+// - v1.3.0 (2025-06-24): Added GPU monitoring integration
+//   - Added gpu_info module dependency for NVIDIA GPU detection
+//   - Added gpu_info and gpu_last_refresh fields to MinerStats struct
+//   - Added refresh_gpu_info_if_needed method for periodic GPU data updates (every 5 seconds)
+//   - Added gpu_info field to WebSocketData struct for dashboard integration
+//   - Updated to_websocket_data to include GPU information in dashboard data
+//   - Updated display_dashboard to show GPU status in console output
+//   - GPU detection uses nvidia-smi command with graceful fallback when unavailable
+//   - Provides GPU name, utilization, temperature, power, and memory usage
+//   - Maintains existing functionality while adding comprehensive GPU monitoring
 // - v1.2.0 (2025-06-24): Added pool connection tracking integration
 //   - Added PoolInfo struct for tracking pool connection status, latency, and statistics
 //   - Added pool_client field to MinerStats for connection monitoring

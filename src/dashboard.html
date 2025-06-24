@@ -152,7 +152,7 @@
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 20px;
             margin-bottom: 30px;
         }
@@ -240,6 +240,11 @@
             .stats-grid {
                 grid-template-columns: 1fr;
             }
+            
+            /* Stack cards vertically on mobile */
+            .stats-grid .stat-card {
+                grid-column: span 1 !important;
+            }
         }
 
         /* Status indicators */
@@ -283,14 +288,15 @@
             <!-- Dashboard Tab -->
             <div id="dashboard" class="tab-pane active">
                 <div class="stats-grid">
-                    <!-- Overview Card -->
+                    <!-- Enhanced Overview Card with CPU/GPU Breakdown -->
                     <div class="stat-card">
-                        <h3>📊 Overview</h3>
-                        <div class="stat-value" id="current-hashrate">0.00 MH/s</div>
-                        <div class="stat-label">Current Hashrate</div>
-                        <div style="margin-top: 10px;">
-                            <div class="stat-label">Session Average: <span id="session-average">0.00 MH/s</span></div>
-                            <div class="stat-label">Algorithm: <span id="algorithm">SHA3x</span></div>
+                        <h3>📊 Mining Overview</h3>
+                        <div class="stat-value" id="total-hashrate">0.00 MH/s</div>
+                        <div class="stat-label">Total Combined Hashrate</div>
+                        <div style="margin-top: 15px;">
+                            <div class="stat-label">CPU: <span id="cpu-hashrate">0.00 MH/s</span> (<span id="cpu-usage-overview">0%</span> usage)</div>
+                            <div class="stat-label">GPU: <span id="gpu-hashrate">0.00 MH/s</span> (<span id="gpu-usage-overview">0%</span> usage)</div>
+                            <div class="stat-label" style="margin-top: 8px;">Algorithm: <span id="algorithm">SHA3x</span></div>
                         </div>
                     </div>
 
@@ -348,30 +354,51 @@
                         </div>
                     </div>
 
-                    <!-- System Info with Real Data - Wider Layout -->
-                    <div class="stat-card" style="grid-column: span 2; min-width: 600px;">
-                        <h3>💻 System Information</h3>
+                    <!-- CPU Performance Card -->
+                    <div class="stat-card">
+                        <h3>⚡ CPU Performance</h3>
+                        <div class="stat-value" id="cpu-usage">0%</div>
+                        <div class="stat-label">CPU Usage <span id="cpu-current" style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">(Live: 0%)</span></div>
+                        <div style="margin-top: 15px;">
+                            <div class="stat-label">Memory: <span id="memory-usage">0%</span> (<span id="memory-used">0 GB</span> / <span id="memory-total">0 GB</span>)</div>
+                            <div class="stat-label">Active Threads: <span id="active-threads">0</span> / <span id="cpu-cores">0</span> cores</div>
+                            <div class="stat-label">CPU Temp: <span id="cpu-temp">--°C</span></div>
+                        </div>
+                    </div>
+
+                    <!-- System Information Card - Wide -->
+                    <div class="stat-card" style="grid-column: span 2;">
+                        <h3>🖥️ System Information</h3>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                            <!-- Left Column: Performance -->
+                            <!-- Left Column: Hardware -->
                             <div>
-                                <div class="stat-value" id="cpu-usage">0%</div>
-                                <div class="stat-label">CPU Usage <span id="cpu-current" style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">(Live: 0%)</span></div>
-                                <div style="margin-top: 15px;">
-                                    <div class="stat-label">Memory: <span id="memory-usage">0%</span> (<span id="memory-used">0 GB</span> / <span id="memory-total">0 GB</span>)</div>
-                                    <div class="stat-label">Active Threads: <span id="active-threads">0</span> / <span id="cpu-cores">0</span> cores</div>
-                                </div>
+                                <div class="stat-label" style="margin-bottom: 10px;"><strong>Hardware Details</strong></div>
+                                <div class="stat-label">CPU: <span id="cpu-name">Unknown</span></div>
+                                <div class="stat-label">Cores: <span id="cpu-cores-display">0</span> threads</div>
+                                <div class="stat-label">Memory: <span id="memory-total-display">0 GB</span> total</div>
+                                <div class="stat-label">Max Temp: <span id="max-temp">--°C</span></div>
                             </div>
                             <!-- Right Column: System Details -->
                             <div>
                                 <div class="stat-label" style="margin-bottom: 10px;"><strong>System Details</strong></div>
-                                <div class="stat-label">CPU: <span id="cpu-name">Unknown</span></div>
                                 <div class="stat-label">OS: <span id="os-name">Unknown</span></div>
                                 <div class="stat-label">Kernel: <span id="kernel-version">Unknown</span></div>
                                 <div class="stat-label">Host: <span id="hostname">Unknown</span></div>
-                                <div style="margin-top: 10px;">
-                                    <div class="stat-label">CPU Temp: <span id="cpu-temp">--°C</span> | Max: <span id="max-temp">--°C</span></div>
-                                </div>
+                                <div class="stat-label">Mining Uptime: <span id="uptime">00:00:00</span></div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- GPU Performance Card -->
+                    <div class="stat-card">
+                        <h3>🎮 GPU Performance</h3>
+                        <div class="stat-value" id="gpu-usage">--</div>
+                        <div class="stat-label">GPU Usage</div>
+                        <div style="margin-top: 15px;">
+                            <div class="stat-label">GPU: <span id="gpu-name">Detecting...</span></div>
+                            <div class="stat-label">Memory: <span id="gpu-memory">-- / -- GB</span></div>
+                            <div class="stat-label">Temperature: <span id="gpu-temp">--°C</span></div>
+                            <div class="stat-label">Power: <span id="gpu-power">-- W</span></div>
                         </div>
                     </div>
                 </div>
@@ -537,12 +564,29 @@
 
         // Update dashboard elements
         function updateDashboard(data) {
-            // Overview section
-            document.getElementById('current-hashrate').textContent = 
-                (data.current_hashrate / 1000000).toFixed(2) + ' MH/s';
-            document.getElementById('session-average').textContent = 
-                (data.session_average / 1000000).toFixed(2) + ' MH/s';
+            // Enhanced Overview section with CPU/GPU system usage
+            const cpuHashrate = data.current_hashrate || 0;
+            const gpuHashrate = 0; // TODO: Add GPU mining hashrate when implemented
+            const totalHashrate = cpuHashrate + gpuHashrate;
+            
+            // Update total hashrate
+            document.getElementById('total-hashrate').textContent = 
+                (totalHashrate / 1000000).toFixed(2) + ' MH/s';
+            
+            // Update CPU mining hashrate
+            document.getElementById('cpu-hashrate').textContent = 
+                (cpuHashrate / 1000000).toFixed(2) + ' MH/s';
+            
+            // Update GPU mining hashrate  
+            document.getElementById('gpu-hashrate').textContent = 
+                (gpuHashrate / 1000000).toFixed(2) + ' MH/s';
+            
+            // Update algorithm
             document.getElementById('algorithm').textContent = data.algorithm || 'SHA3x';
+            
+            // Update system usage percentages (will be set later in system_info section)
+            // CPU usage will be updated when we process system_info
+            // GPU usage will be updated when we process gpu_info
 
             // Work & Performance section (merged)
             document.getElementById('total-work').textContent = formatNumber(data.total_work || 0);
@@ -573,27 +617,105 @@
                 const avgCpuUsage = cpuUsageHistory.reduce((sum, usage) => sum + usage, 0) / cpuUsageHistory.length;
                 const currentCpuUsage = data.system_info.cpu_usage;
                 
-                // Display performance info
+                // Update CPU Performance card
                 document.getElementById('cpu-usage').textContent = avgCpuUsage.toFixed(1) + '%';
                 document.getElementById('cpu-current').textContent = `(Live: ${currentCpuUsage.toFixed(1)}%)`;
+                
+                // Update CPU usage in Mining Overview
+                document.getElementById('cpu-usage-overview').textContent = currentCpuUsage.toFixed(1) + '%';
+                
                 document.getElementById('memory-usage').textContent = data.system_info.memory_usage.toFixed(1) + '%';
                 document.getElementById('memory-used').textContent = (data.system_info.memory_used / (1024**3)).toFixed(1);
                 document.getElementById('memory-total').textContent = (data.system_info.memory_total / (1024**3)).toFixed(1);
-                
-                // Display system details
-                document.getElementById('cpu-name').textContent = data.system_info.cpu_name || 'Unknown';
+                document.getElementById('active-threads').textContent = data.active_threads || 0;
                 document.getElementById('cpu-cores').textContent = data.system_info.cpu_cores || 0;
+                document.getElementById('cpu-temp').textContent = data.system_info.cpu_temperature ? 
+                    data.system_info.cpu_temperature.toFixed(1) + '°C' : '--°C';
+                
+                // Update System Information card
+                document.getElementById('cpu-name').textContent = data.system_info.cpu_name || 'Unknown';
+                document.getElementById('cpu-cores-display').textContent = data.system_info.cpu_cores || 0;
+                document.getElementById('memory-total-display').textContent = (data.system_info.memory_total / (1024**3)).toFixed(1);
                 document.getElementById('os-name').textContent = data.system_info.os_name || 'Unknown';
                 document.getElementById('kernel-version').textContent = data.system_info.kernel_version || 'Unknown';
                 document.getElementById('hostname').textContent = data.system_info.hostname || 'Unknown';
-                
-                // Display temperature info
-                document.getElementById('cpu-temp').textContent = data.system_info.cpu_temperature ? 
-                    data.system_info.cpu_temperature.toFixed(1) + '°C' : '--°C';
                 document.getElementById('max-temp').textContent = data.system_info.max_temperature ? 
                     data.system_info.max_temperature.toFixed(1) + '°C' : '--°C';
             }
-            document.getElementById('active-threads').textContent = data.active_threads || 0;
+
+            // Update GPU Performance card with real data
+            console.log('🔧 GPU data received:', !!data.gpu_info);
+            if (data.gpu_info) {
+                console.log('🔧 GPU info:', data.gpu_info);
+                
+                if (data.gpu_info.detected) {
+                    console.log('🔧 GPU detected, updating display');
+                    
+                    // Update GPU usage
+                    document.getElementById('gpu-usage').textContent = data.gpu_info.utilization ? 
+                        data.gpu_info.utilization.toFixed(0) + '%' : '--';
+                    
+                    // Update GPU name
+                    document.getElementById('gpu-name').textContent = data.gpu_info.name || 'Unknown GPU';
+                    
+                    // Format GPU memory
+                    if (data.gpu_info.memory_used !== null && data.gpu_info.memory_used !== undefined && 
+                        data.gpu_info.memory_total !== null && data.gpu_info.memory_total !== undefined) {
+                        const memUsedGB = (data.gpu_info.memory_used / 1024).toFixed(1);
+                        const memTotalGB = (data.gpu_info.memory_total / 1024).toFixed(1);
+                        document.getElementById('gpu-memory').textContent = `${memUsedGB} / ${memTotalGB} GB`;
+                    } else {
+                        document.getElementById('gpu-memory').textContent = '-- / -- GB';
+                    }
+                    
+                    // Update temperature
+                    document.getElementById('gpu-temp').textContent = data.gpu_info.temperature ? 
+                        data.gpu_info.temperature.toFixed(0) + '°C' : '--°C';
+                    
+                    // Update power
+                    document.getElementById('gpu-power').textContent = data.gpu_info.power_usage ? 
+                        data.gpu_info.power_usage.toFixed(0) + ' W' : '-- W';
+                    
+                    // Update GPU usage in Mining Overview
+                    document.getElementById('gpu-usage-overview').textContent = data.gpu_info.utilization ? 
+                        data.gpu_info.utilization.toFixed(1) + '%' : '0%';
+                    
+                    
+                    // Update GPU card styling to show detection
+                    const gpuCard = document.getElementById('gpu-name').closest('.stat-card');
+                    if (gpuCard) {
+                        gpuCard.style.borderLeft = '4px solid #4CAF50';
+                    }
+                    
+                } else {
+                    console.log('🔧 GPU not detected');
+                    
+                    // GPU not detected - update Mining Overview
+                    document.getElementById('gpu-usage-overview').textContent = '0%';
+                    
+                    // GPU not detected
+                    document.getElementById('gpu-usage').textContent = '--';
+                    document.getElementById('gpu-name').textContent = 'Not detected';
+                    document.getElementById('gpu-memory').textContent = '-- / -- GB';
+                    document.getElementById('gpu-temp').textContent = '--°C';
+                    document.getElementById('gpu-power').textContent = '-- W';
+                    
+                    // Update GPU card styling
+                    const gpuCard = document.getElementById('gpu-name').closest('.stat-card');
+                    if (gpuCard) {
+                        gpuCard.style.borderLeft = '4px solid #666';
+                    }
+                }
+            } else {
+                console.log('🔧 No gpu_info field in WebSocket data - check backend');
+                
+                // No GPU data from backend
+                document.getElementById('gpu-usage').textContent = '??';
+                document.getElementById('gpu-name').textContent = 'No GPU data from backend';
+                document.getElementById('gpu-memory').textContent = '?? / ?? GB';
+                document.getElementById('gpu-temp').textContent = '??°C';
+                document.getElementById('gpu-power').textContent = '?? W';
+            }
             
             // Update pool connection info
             if (data.pool_info) {
@@ -618,7 +740,7 @@
                 }
             }
             
-            // Update uptime
+            // Update miner uptime
             const uptime = new Date((data.uptime || 0) * 1000).toISOString().substr(11, 8);
             document.getElementById('uptime').textContent = uptime;
 
