@@ -71,7 +71,7 @@ cargo run --release -- \
 cargo run --release -- \
   --algo sha3x \
   --wallet YOUR_TARI_WALLET \
-  --pool 148.163.124.162:6118 \
+  --pool 142.127.107.24:7777 \
   --worker my-worker \
   --threads 32
 
