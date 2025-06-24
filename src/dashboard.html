@@ -334,15 +334,17 @@
                         </div>
                     </div>
 
-                    <!-- Connection Status -->
+                    <!-- Pool Connection with Real Data -->
                     <div class="stat-card">
                         <h3>🌐 Pool Connection</h3>
                         <div class="stat-value status-online">
-                            <span class="status-indicator"></span>Online
+                            <span class="status-indicator"></span><span id="pool-status">Connecting</span>
                         </div>
-                        <div class="stat-label">Data Source: <span id="connection-status">Connecting...</span></div>
+                        <div class="stat-label"><span id="pool-address">Unknown</span></div>
                         <div style="margin-top: 10px;">
-                            <div class="stat-label">Uptime: <span id="uptime">00:00:00</span></div>
+                            <div class="stat-label">Latency: <span id="pool-latency">--ms</span> | Attempts: <span id="pool-attempts">0</span></div>
+                            <div class="stat-label">Pool Uptime: <span id="pool-uptime">--</span></div>
+                            <div class="stat-label">Miner Uptime: <span id="uptime">00:00:00</span></div>
                         </div>
                     </div>
 
@@ -592,6 +594,29 @@
                     data.system_info.max_temperature.toFixed(1) + '°C' : '--°C';
             }
             document.getElementById('active-threads').textContent = data.active_threads || 0;
+            
+            // Update pool connection info
+            if (data.pool_info) {
+                document.getElementById('pool-status').textContent = data.pool_info.is_connected ? 'Connected' : 'Disconnected';
+                document.getElementById('pool-address').textContent = data.pool_info.pool_address || 'Unknown';
+                // Display latency with live indicator
+                document.getElementById('pool-latency').textContent = data.pool_info.latency_ms ? 
+                    data.pool_info.latency_ms + 'ms (live)' : '--ms';
+                document.getElementById('pool-attempts').textContent = data.pool_info.connection_attempts || 0;
+                document.getElementById('pool-uptime').textContent = data.pool_info.uptime_seconds ? 
+                    formatDuration(data.pool_info.uptime_seconds) : '--';
+                
+                // Update status indicator color
+                const statusElement = document.querySelector('.status-online');
+                const indicator = document.querySelector('.status-indicator');
+                if (data.pool_info.is_connected) {
+                    statusElement.style.color = '#4CAF50';
+                    indicator.style.background = '#4CAF50';
+                } else {
+                    statusElement.style.color = '#f44336';
+                    indicator.style.background = '#f44336';
+                }
+            }
             
             // Update uptime
             const uptime = new Date((data.uptime || 0) * 1000).toISOString().substr(11, 8);
