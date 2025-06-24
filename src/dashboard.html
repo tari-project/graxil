@@ -346,11 +346,16 @@
                         </div>
                     </div>
 
-                    <!-- System Info (Simplified) -->
+                    <!-- System Info with Real Data -->
                     <div class="stat-card">
                         <h3>💻 System Info</h3>
-                        <div class="stat-value" id="active-threads">0</div>
-                        <div class="stat-label">Active Threads</div>
+                        <div class="stat-value" id="cpu-usage">0%</div>
+                        <div class="stat-label">CPU Usage <span id="cpu-current" style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">(Live: 0%)</span></div>
+                        <div style="margin-top: 10px;">
+                            <div class="stat-label">CPU: <span id="cpu-name">Unknown</span></div>
+                            <div class="stat-label">Cores: <span id="cpu-cores">0</span> | Active Threads: <span id="active-threads">0</span></div>
+                            <div class="stat-label">Memory: <span id="memory-usage">0%</span> (<span id="memory-used">0 GB</span> / <span id="memory-total">0 GB</span>)</div>
+                        </div>
                     </div>
                 </div>
 
@@ -444,6 +449,7 @@
         let chartsInitialized = false;
         let charts = {};
         let lastShareCount = 0;  // Track total shares to calculate rate
+        let cpuUsageHistory = [];  // Track CPU usage for moving average
 
         // Tab switching function
         function switchTab(tabName) {
@@ -536,7 +542,30 @@
             document.getElementById('acceptance-rate').textContent = (data.acceptance_rate || 0).toFixed(1) + '%';
             document.getElementById('time-since-last').textContent = formatDuration(data.time_since_last_share || 0);
             
-            // System info (simplified)
+            // System info with both current and average CPU display
+            if (data.system_info) {
+                // Add current CPU usage to history
+                cpuUsageHistory.push(data.system_info.cpu_usage);
+                
+                // Keep only last 10 readings (10 seconds of history)
+                if (cpuUsageHistory.length > 10) {
+                    cpuUsageHistory.shift();
+                }
+                
+                // Calculate moving average
+                const avgCpuUsage = cpuUsageHistory.reduce((sum, usage) => sum + usage, 0) / cpuUsageHistory.length;
+                const currentCpuUsage = data.system_info.cpu_usage;
+                
+                // Display both: smooth average as main, current as subtitle
+                document.getElementById('cpu-usage').textContent = avgCpuUsage.toFixed(1) + '%';
+                document.getElementById('cpu-current').textContent = `(Live: ${currentCpuUsage.toFixed(1)}%)`;
+                
+                document.getElementById('cpu-name').textContent = data.system_info.cpu_name || 'Unknown';
+                document.getElementById('cpu-cores').textContent = data.system_info.cpu_cores || 0;
+                document.getElementById('memory-usage').textContent = data.system_info.memory_usage.toFixed(1) + '%';
+                document.getElementById('memory-used').textContent = (data.system_info.memory_used / (1024**3)).toFixed(1);
+                document.getElementById('memory-total').textContent = (data.system_info.memory_total / (1024**3)).toFixed(1);
+            }
             document.getElementById('active-threads').textContent = data.active_threads || 0;
             
             // Update uptime

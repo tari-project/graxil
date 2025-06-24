@@ -6,7 +6,7 @@
 // via pull requests to the project repository.
 //
 // File: src/miner/stats/miner_stats.rs
-// Version: 1.0.9
+// Version: 1.1.0
 // Developer: OIEIEIO <oieieio@protonmail.com>
 //
 // This file implements miner-wide statistics tracking for the SHA3x miner,
@@ -15,7 +15,7 @@
 //
 // Tree Location:
 // - src/miner/stats/miner_stats.rs (miner-wide statistics logic)
-// - Depends on: std, thread_stats, serde
+// - Depends on: std, thread_stats, serde, sysinfo
 
 use crate::core::types::Algorithm;
 use super::thread_stats::ThreadStats;
@@ -25,6 +25,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
 use serde::Serialize;
+use sysinfo::System;
 
 #[allow(dead_code)] // Fields unused in non-TUI version but kept for future use
 #[derive(Debug)]
@@ -42,6 +43,16 @@ pub struct JobInfo {
     pub block_height: u64,
     pub difficulty: u64,
     pub timestamp: u64, // seconds since miner start
+}
+
+#[derive(Serialize)]
+pub struct SystemInfo {
+    pub cpu_usage: f32,
+    pub cpu_cores: usize,
+    pub cpu_name: String,
+    pub memory_total: u64,
+    pub memory_used: u64,
+    pub memory_usage: f64,
 }
 
 #[derive(Serialize)]
@@ -68,6 +79,7 @@ pub struct WebSocketData {
     pub acceptance_rate: f64,
     pub recent_shares: Vec<WebSocketShare>,
     pub top_shares: Vec<u64>,
+    pub system_info: SystemInfo,
 }
 
 #[derive(Serialize)]
@@ -93,6 +105,7 @@ pub struct MinerStats {
     algo: Algorithm,
     current_job: Arc<Mutex<JobInfo>>,
     recent_jobs: Arc<Mutex<VecDeque<JobInfo>>>,
+    system: Arc<Mutex<System>>,
 }
 
 impl MinerStats {
@@ -121,6 +134,7 @@ impl MinerStats {
                 timestamp: 0,
             })),
             recent_jobs: Arc::new(Mutex::new(VecDeque::with_capacity(5))),
+            system: Arc::new(Mutex::new(System::new_all())),
         }
     }
 
@@ -316,6 +330,27 @@ impl MinerStats {
             })
             .collect();
 
+        // Get system info
+        let mut system = self.system.lock().unwrap();
+        system.refresh_all();
+        
+        // Calculate average CPU usage across all cores (proper system-wide usage)
+        let cpu_usage = if !system.cpus().is_empty() {
+            let total_usage: f32 = system.cpus().iter().map(|cpu| cpu.cpu_usage()).sum();
+            total_usage / system.cpus().len() as f32
+        } else {
+            0.0
+        };
+        
+        let system_info = SystemInfo {
+            cpu_usage,
+            cpu_cores: system.cpus().len(),
+            cpu_name: system.cpus().first().map(|cpu| cpu.brand().to_string()).unwrap_or_else(|| "Unknown".to_string()),
+            memory_total: system.total_memory(),
+            memory_used: system.used_memory(),
+            memory_usage: (system.used_memory() as f64 / system.total_memory() as f64) * 100.0,
+        };
+
         debug!("WebSocket data - Thread count: {}, Hashrates: {:?}", self.thread_stats.len(), thread_hashrates);
 
         WebSocketData {
@@ -341,6 +376,7 @@ impl MinerStats {
             acceptance_rate,
             recent_shares,
             top_shares,
+            system_info,
         }
     }
 
@@ -470,6 +506,13 @@ impl MinerStats {
 }
 
 // Changelog:
+// - v1.1.0 (2025-06-23): Added system information monitoring.
+//   - Added sysinfo crate integration for real-time system monitoring.
+//   - Added SystemInfo struct to track CPU usage, cores, name, and memory usage.
+//   - Added system field to MinerStats struct for system monitoring.
+//   - Updated WebSocketData to include system_info field.
+//   - Updated to_websocket_data to collect and send system information.
+//   - System info refreshed on every WebSocket update (1 second intervals).
 // - v1.0.9 (2025-06-23): Added job tracking.
 //   - Added JobInfo struct to store job_id, block_height, difficulty, and timestamp.
 //   - Added current_job and recent_jobs fields to MinerStats to track current and last 5 jobs.
