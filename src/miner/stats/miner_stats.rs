@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
 use serde::Serialize;
-use sysinfo::System;
+use sysinfo::{System, Components};
 
 #[allow(dead_code)] // Fields unused in non-TUI version but kept for future use
 #[derive(Debug)]
@@ -53,6 +53,11 @@ pub struct SystemInfo {
     pub memory_total: u64,
     pub memory_used: u64,
     pub memory_usage: f64,
+    pub os_name: Option<String>,
+    pub kernel_version: Option<String>,
+    pub hostname: Option<String>,
+    pub cpu_temperature: Option<f32>,
+    pub max_temperature: Option<f32>,
 }
 
 #[derive(Serialize)]
@@ -342,6 +347,10 @@ impl MinerStats {
             0.0
         };
         
+        // Get temperature information
+        let components = Components::new_with_refreshed_list();
+        let (cpu_temp, max_temp) = get_temperatures(&components);
+        
         let system_info = SystemInfo {
             cpu_usage,
             cpu_cores: system.cpus().len(),
@@ -349,6 +358,11 @@ impl MinerStats {
             memory_total: system.total_memory(),
             memory_used: system.used_memory(),
             memory_usage: (system.used_memory() as f64 / system.total_memory() as f64) * 100.0,
+            os_name: System::name(),
+            kernel_version: System::kernel_version(),
+            hostname: System::host_name(),
+            cpu_temperature: cpu_temp,
+            max_temperature: max_temp,
         };
 
         debug!("WebSocket data - Thread count: {}, Hashrates: {:?}", self.thread_stats.len(), thread_hashrates);
@@ -503,6 +517,37 @@ impl MinerStats {
         info!("├─ Active Threads: {}/{}", active_threads, self.thread_stats.len());
         info!("└─ Current Difficulty: {}", Self::format_number(current_difficulty));
     }
+}
+
+/// Extract temperature information from system components
+fn get_temperatures(components: &Components) -> (Option<f32>, Option<f32>) {
+    let mut cpu_temp: Option<f32> = None;
+    let mut max_temp: Option<f32> = None;
+    let mut highest_temp = 0.0f32;
+    
+    for component in components {
+        if let Some(temp) = component.temperature() {
+            let label = component.label().to_lowercase();
+            
+            // Look for CPU-related temperature sensors
+            if cpu_temp.is_none() && (
+                label.contains("cpu") || 
+                label.contains("core") || 
+                label.contains("package") ||
+                label.contains("processor")
+            ) {
+                cpu_temp = Some(temp);
+            }
+            
+            // Track highest temperature across all components
+            if temp > highest_temp {
+                highest_temp = temp;
+                max_temp = Some(temp);
+            }
+        }
+    }
+    
+    (cpu_temp, max_temp)
 }
 
 // Changelog:
