@@ -45,7 +45,7 @@ axum = { version = "0.7", features = ["ws"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["fs", "cors"] }
 tokio-tungstenite = "0.21"
-sysinfo = "0.30"
+sysinfo = "0.35.2"
 
 # SV2 from git repository 
 roles_logic_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
