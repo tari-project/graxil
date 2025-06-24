@@ -16,14 +16,13 @@ use crate::Result;
 use num_cpus;
 use serde_json::Value;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncWriteExt, BufReader, AsyncBufReadExt};
 use tokio::sync::mpsc;
 use tokio::sync::broadcast::{self, Sender as BroadcastSender};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info};
-use std::collections::HashMap;
 
 // Explicit fully qualified import to bypass resolution issues
 use super::thread::start_mining_thread;
@@ -36,8 +35,6 @@ pub struct CpuMiner {
     stats: Arc<MinerStats>,
     pool_client: Arc<PoolClient>,
     algo: Algorithm,
-    current_difficulty: Arc<AtomicU64>,
-    current_jobs: Arc<Mutex<HashMap<String, PoolJob>>>,
     last_job_time: Arc<Mutex<Instant>>,
 }
 
@@ -70,8 +67,6 @@ impl CpuMiner {
             stats: Arc::new(stats),
             pool_client,
             algo,
-            current_difficulty: Arc::new(AtomicU64::new(1)),
-            current_jobs: Arc::new(Mutex::new(HashMap::new())),
             last_job_time: Arc::new(Mutex::new(Instant::now())),
         }
     }

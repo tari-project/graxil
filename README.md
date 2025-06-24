@@ -342,6 +342,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Rust cryptographic libraries
 - Mining community for testing and feedback
 
+Special thanks to:
+- **[@Snipa22](https://github.com/Snipa22)** - For guidance and assistance during development
+
+## 👥 Contributors
+
+- **[@OIEIEIO](https://github.com/OIEIEIO)** - Lead Developer
+- **[@Snipa22](https://github.com/Snipa22)** - Technical Guidance
+
 ## 📞 Support
 
 - **Issues**: [GitHub Issues](https://github.com/OIEIEIO/sha3x-miner/issues)

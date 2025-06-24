@@ -18,6 +18,7 @@
 // - Depends on: std, thread_stats, serde, sysinfo
 
 use crate::core::types::Algorithm;
+use crate::pool::client::PoolClient;
 use super::thread_stats::ThreadStats;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -45,6 +46,14 @@ pub struct JobInfo {
     pub timestamp: u64, // seconds since miner start
 }
 
+#[derive(Serialize)]
+pub struct PoolInfo {
+    pub pool_address: String,
+    pub is_connected: bool,
+    pub latency_ms: Option<u64>,
+    pub connection_attempts: u32,
+    pub uptime_seconds: Option<u64>,
+}
 #[derive(Serialize)]
 pub struct SystemInfo {
     pub cpu_usage: f32,
@@ -85,6 +94,7 @@ pub struct WebSocketData {
     pub recent_shares: Vec<WebSocketShare>,
     pub top_shares: Vec<u64>,
     pub system_info: SystemInfo,
+    pub pool_info: PoolInfo,
 }
 
 #[derive(Serialize)]
@@ -111,6 +121,7 @@ pub struct MinerStats {
     current_job: Arc<Mutex<JobInfo>>,
     recent_jobs: Arc<Mutex<VecDeque<JobInfo>>>,
     system: Arc<Mutex<System>>,
+    pool_client: Option<Arc<PoolClient>>,
 }
 
 impl MinerStats {
@@ -140,12 +151,18 @@ impl MinerStats {
             })),
             recent_jobs: Arc::new(Mutex::new(VecDeque::with_capacity(5))),
             system: Arc::new(Mutex::new(System::new_all())),
+            pool_client: None,
         }
     }
 
     pub fn set_algorithm(&mut self, algo: Algorithm) {
         debug!("Setting algorithm to {:?}", algo);
         self.algo = algo;
+    }
+
+    /// Set the pool client for connection tracking
+    pub fn set_pool_client(&mut self, pool_client: Arc<PoolClient>) {
+        self.pool_client = Some(pool_client);
     }
 
     /// Update the current job and add it to recent jobs
@@ -365,6 +382,26 @@ impl MinerStats {
             max_temperature: max_temp,
         };
 
+        // Get pool connection info
+        let pool_info = if let Some(ref pool_client) = self.pool_client {
+            let conn_info = pool_client.get_connection_info();
+            PoolInfo {
+                pool_address: conn_info.display_address(),
+                is_connected: conn_info.is_connected,
+                latency_ms: conn_info.latency_ms(),
+                connection_attempts: conn_info.connection_attempts,
+                uptime_seconds: conn_info.uptime().map(|d| d.as_secs()),
+            }
+        } else {
+            PoolInfo {
+                pool_address: "Not configured".to_string(),
+                is_connected: false,
+                latency_ms: None,
+                connection_attempts: 0,
+                uptime_seconds: None,
+            }
+        };
+
         debug!("WebSocket data - Thread count: {}, Hashrates: {:?}", self.thread_stats.len(), thread_hashrates);
 
         WebSocketData {
@@ -391,6 +428,7 @@ impl MinerStats {
             recent_shares,
             top_shares,
             system_info,
+            pool_info,
         }
     }
 
@@ -551,6 +589,13 @@ fn get_temperatures(components: &Components) -> (Option<f32>, Option<f32>) {
 }
 
 // Changelog:
+// - v1.2.0 (2025-06-24): Added pool connection tracking integration
+//   - Added PoolInfo struct for tracking pool connection status, latency, and statistics
+//   - Added pool_client field to MinerStats for connection monitoring
+//   - Added set_pool_client method to register pool client for tracking
+//   - Updated WebSocketData to include pool_info field
+//   - Enhanced to_websocket_data to collect pool connection information
+//   - Provides real-time pool connectivity status and performance metrics for dashboard
 // - v1.1.0 (2025-06-23): Added system information monitoring.
 //   - Added sysinfo crate integration for real-time system monitoring.
 //   - Added SystemInfo struct to track CPU usage, cores, name, and memory usage.

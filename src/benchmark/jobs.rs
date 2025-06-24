@@ -14,7 +14,7 @@
 
 use crate::core::types::{Algorithm, MiningJob};
 use crate::core::difficulty::{U256, bits_to_target};
-use std::cmp;
+
 
 /// Benchmark-specific job configuration
 #[derive(Debug, Clone)]
