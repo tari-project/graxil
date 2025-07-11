@@ -135,7 +135,7 @@ jobs:
           cache-on-failure: true
 
       - name: Install nVida cuda toolkit
-        uses: jimver/cuda-toolkit@v0.2.22
+        uses: jimver/cuda-toolkit@v0.2.26
         if: contains(matrix.builds.features, 'nvidia')
         with:
           method: network
