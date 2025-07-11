@@ -69,7 +69,7 @@ gpu = ["opencl3"]                  # GPU-only mining (385+ MH/s)
 hybrid = ["cpu", "gpu", "opencl3"] # CPU+GPU hybrid mining (400+ MH/s)
 
 [[bin]]
-name = "sha3x-miner"
+name = "graxil"
 path = "src/main.rs"
 [[bin]]
 name = "gpu_test"
