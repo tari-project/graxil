@@ -403,9 +403,6 @@ impl Args {
                         if wallet.len() < 80 {
                             return Err("Tari wallet address is too short (minimum 80 characters)".to_string());
                         }
-                        if !wallet.starts_with("12") && !wallet.starts_with("14") {
-                            return Err("Tari wallet address must start with '12' (one-sided) or '14' (interactive)".to_string());
-                        }
                         if !wallet.chars().all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c)) {
                             return Err("Tari wallet address contains invalid characters (must be Base58)".to_string());
                         }
