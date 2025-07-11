@@ -1,0 +1,419 @@
+---
+name: Build Matrix of Binaries
+
+'on':
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]*"
+    branches:
+      - main
+      - build-*
+  schedule:
+    - cron: "15 01 * * 0" # Every Sunday at 01h15
+  workflow_dispatch:
+    inputs:
+      tariNetwork:
+        description: "Tari Network"
+        required: true
+        default: "esme"
+
+env:
+  TS_FILENAME: "graxil"
+  TS_BUNDLE_ID_BASE: "com.tarilabs"
+  TS_SIG_FN: "sha256-unsigned.txt"
+  # TS_BUILD: "debug"
+  TS_BUILD: "release"
+  matrix-json-file: ".github/workflows/build_binaries.json"
+  CARGO_HTTP_MULTIPLEXING: false
+  CARGO_UNSTABLE_SPARSE_REGISTRY: true
+  CARGO: cargo
+  CARGO_OPTIONS: ""
+
+  SHARUN: "shasum --algorithm 256"
+
+concurrency:
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') && github.ref != 'refs/heads/main' }}
+
+permissions: {}
+
+jobs:
+  matrix-prep:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          ref: gpu-dev
+
+      - name: Set Matrix
+        id: set-matrix
+        shell: bash
+        run: |
+          # Get all build targets with build_enabled != false
+          matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
+
+          # No network expansion — just wrap the list
+          matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .}')
+
+          echo $matrix
+          echo $matrix | jq .
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
+
+  matrix-check:
+    # Debug matrix
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    needs: matrix-prep
+    steps:
+      - name: Install json2yaml
+        run: |
+          sudo npm install -g json2yaml
+
+      - name: Check matrix definition
+        run: |
+          matrix='${{ needs.matrix-prep.outputs.matrix }}'
+          echo $matrix
+          echo $matrix | jq .
+          echo $matrix | json2yaml
+
+  builds:
+    name: Building ${{ matrix.builds.name }} for ${{ matrix.builds.tari_target_network }}
+    needs: matrix-prep
+    continue-on-error: ${{ matrix.builds.best_effort || false }}
+    outputs:
+      TS_VERSION: ${{ steps.set-tari-vars.outputs.TS_VERSION }}
+      VSHA_SHORT: ${{ steps.set-tari-vars.outputs.VSHA_SHORT }}
+      BINFILE: ${{ steps.set-tari-vars.outputs.BINFILE }}
+
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJson(needs.matrix-prep.outputs.matrix) }}
+
+    runs-on: ${{ matrix.builds.runs-on }}
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          ref: gpu-dev
+
+      - name: Declare Global Variables 4 GHA ${{ github.event_name }}
+        id: set-tari-vars
+        shell: bash
+        run: |
+          echo "VBRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+          VSHA_SHORT=$(git rev-parse --short HEAD)
+          echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
+          echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_OUTPUT
+          TS_VERSION=$(awk -F ' = ' '$1 ~ /^version/ \
+            { gsub(/["]/, "", $2); printf("%s",$2) }' \
+            "$GITHUB_WORKSPACE/Cargo.toml")
+          echo "TS_VERSION=${TS_VERSION}" >> $GITHUB_ENV
+          echo "TS_VERSION=${TS_VERSION}" >> $GITHUB_OUTPUT
+          BINFILE="${TS_FILENAME}-${{ matrix.builds.name }}-${{ matrix.builds.tari_target_network }}-${TS_VERSION}-${VSHA_SHORT}${TS_EXT}"
+          echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
+          echo "BINFILE=${BINFILE}" >> $GITHUB_OUTPUT
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          toolchain: ${{ matrix.builds.rust }}
+          targets: ${{ matrix.builds.target }}
+
+      - name: Cache cargo files and outputs
+        if: ${{ ! startsWith(github.ref, 'refs/tags/v') }}
+        uses: swatinem/rust-cache@v2
+        with:
+          # Might need to feature
+          key: ${{ matrix.builds.name }}
+          cache-on-failure: true
+
+      - name: Install nVida cuda toolkit
+        uses: jimver/cuda-toolkit@v0.2.22
+        if: contains(matrix.builds.features, 'nvidia')
+        with:
+          method: network
+          sub-packages: '["nvcc", "cudart"]'
+
+      - name: Install Linux dependencies - Ubuntu
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --assume-yes \
+            libprotobuf-dev \
+            protobuf-compiler
+
+      - name: Install Linux dependencies - Ubuntu / OpenCL
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && contains(matrix.builds.features, 'opencl') }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --assume-yes \
+            opencl-headers \
+            ocl-icd-opencl-dev
+
+      - name: Install dependencies (macOS)
+        if: startsWith(runner.os,'macOS')
+        shell: bash
+        run: |
+          # openssl, cmake and autoconf already installed
+          brew install zip coreutils automake protobuf
+          # Force static openssl libs
+          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+          if [ -f /opt/homebrew/opt/openssl/README.md ]; then
+            # arm64
+            ls -la /opt/homebrew/opt/openssl/
+            echo "OPENSSL_LIB_DIR=/opt/homebrew/opt/openssl/lib" >> $GITHUB_ENV
+            echo "OPENSSL_INCLUDE_DIR=/opt/homebrew/opt/openssl/include" >> $GITHUB_ENV
+          else
+            # x86_64
+            ls -la /usr/local/opt/openssl/
+            echo "OPENSSL_LIB_DIR=/usr/local/opt/openssl/lib" >> $GITHUB_ENV
+            echo "OPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include" >> $GITHUB_ENV
+          fi
+
+      - name: Install macOS-14 missing dependencies - hack
+        if: ${{ startsWith(runner.os,'macOS') && startsWith(runner.arch,'ARM64') }}
+        run: |
+          brew install libtool
+
+      - name: Install Windows dependencies
+        if: startsWith(runner.os,'Windows')
+        shell: bash
+        run: |
+          echo "TS_EXT=.exe" >> $GITHUB_ENV
+          # echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
+          mkdir -p "$GITHUB_WORKSPACE\psutils"
+          curl -v -o "$GITHUB_WORKSPACE\psutils\getopt.ps1" "https://raw.githubusercontent.com/lukesampson/psutils/master/getopt.ps1"
+          curl -v -o "$GITHUB_WORKSPACE\psutils\shasum.ps1" "https://raw.githubusercontent.com/lukesampson/psutils/master/shasum.ps1"
+          echo "SHARUN=pwsh $GITHUB_WORKSPACE\psutils\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
+          #  vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
+          # Bug in choco - need to install each package individually
+          #choco upgrade llvm -y
+          choco upgrade protoc -y
+          # openssl install stupidness
+          #choco install openssl -y
+          #echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
+          # choco upgrade opencl-intel-cpu-runtime -y
+          vcpkg.exe --triplet=x64-windows install opencl
+          # Needed for openssl via vcpkg
+          vcpkg install openssl:x64-windows-static
+          echo "VCPKG_ROOT=C:\vcpkg" >> $GITHUB_ENV
+          echo "OPENSSL_DIR=C:\vcpkg\packages\openssl_x64-windows-static" >> $GITHUB_ENV
+          #echo "OPENSSL_STATIC=Yes" >> $GITHUB_ENV
+          #echo "VCPKGRS_DYNAMIC=1" >> $GITHUB_ENV
+          rustup target add ${{ matrix.builds.target }}
+
+      - name: Install and setup cargo cross
+        if: ${{ matrix.builds.cross }}
+        shell: bash
+        run: |
+          #cargo install cross
+          cargo install cross --git https://github.com/cross-rs/cross
+          echo "CARGO=cross" >> $GITHUB_ENV
+          # Disable - [cross] warning: Found conflicting cross configuration
+          echo "CROSS_NO_WARNINGS=0" >> $GITHUB_ENV
+
+      - name: Install and setup cargo-auditable
+        if: ${{ ( ! matrix.builds.cross ) }}
+        shell: bash
+        run: |
+          cargo install cargo-auditable cargo-audit
+          echo "CARGO=${{ env.CARGO }} auditable" >> $GITHUB_ENV
+
+      - name: Build release targets
+        shell: bash
+        run: |
+          # echo "TS_BUILD=release" >> $GITHUB_ENV
+          if [[ "${{ env.TS_BUILD }}" == "release" ]]; then
+            echo "CARGO_OPTIONS=${{ env.CARGO_OPTIONS }} --${{ env.TS_BUILD }}" >> $GITHUB_ENV
+          fi
+
+      - name: Show command used for Cargo
+        shell: bash
+        run: |
+          echo "cargo command is: ${{ env.CARGO }}"
+          echo "cargo options is: ${{ env.CARGO_OPTIONS }}"
+          echo "cross flag: ${{ matrix.builds.cross }}"
+
+      - name: Build release binaries
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ matrix.builds.rustflags }}
+          TARI_NETWORK: ${{ matrix.builds.tari_network }}
+          TARI_TARGET_NETWORK: ${{ matrix.builds.tari_target_network }}
+        working-directory: src
+        run: |
+          ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
+            --target ${{ matrix.builds.target }} \
+            --features "${{ matrix.builds.features }}" \
+            ${{ matrix.builds.flags }} \
+            --bin ${{ env.TS_FILENAME }}
+
+      - name: Build release binaries (info)
+        if: ${{ false }}
+        shell: bash
+        run: |
+          ls -alhtR target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/
+
+      - name: Sign Windows files with Trusted Certificate
+        if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: Tari
+          certificate-profile-name: Tarilabs
+          files-folder: ${{ github.workspace }}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify Windows signing for executibles
+        if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        shell: powershell
+        working-directory: ${{ github.workspace }}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/
+        run: |
+          # Get the Program Files (x86) directory dynamically
+          $programFilesX86 = [System.Environment]::GetFolderPath("ProgramFilesX86")
+          $sdkBasePath = Join-Path $programFilesX86 "Windows Kits"
+
+          # Check if Windows Kits exists
+          if (-Not (Test-Path $sdkBasePath)) {
+            Write-Error "Windows Kits folder not found at $sdkBasePath!"
+            exit 1
+          }
+
+          Write-Output "Searching for signtool.exe in: $sdkBasePath"
+
+          # Search for signtool.exe within Windows Kits fold with x64 in the path
+          $signtoolPath = Get-ChildItem -Path $sdkBasePath -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                          Where-Object { $_.FullName -match '\\x64\\' } |
+                          Select-Object -ExpandProperty FullName -First 1
+
+          if (-not $signtoolPath) {
+            Write-Error "signtool.exe not found in Windows Kits folder!"
+            exit 1
+          }
+
+          Write-Output "Found signtool.exe at: $signtoolPath"
+
+          $Signature = Get-AuthenticodeSignature ${{ env.TS_FILENAME }}.exe
+
+          # Display results
+          Write-Host "File: ${{ env.TS_FILENAME }}.exe"
+          Write-Host "  - Status: $($Signature.Status)"
+          Write-Host "  - Status Message: $($Signature.StatusMessage)"
+          Write-Host "  - Signer: $($Signature.SignerCertificate.Subject)"
+          Write-Host "  - Issuer: $($Signature.SignerCertificate.Issuer)"
+          Write-Host "---------------------------------------------"
+
+          & $signtoolPath verify /pa "${{ env.TS_FILENAME }}.exe"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "!! Signature verification failed for ${{ env.TS_FILENAME }}.exe !!"
+            exit 1
+          }
+
+      - name: Audit tree and feedback for binaries
+        if: ${{ ( ! matrix.builds.cross ) }}
+        continue-on-error: true
+        shell: bash
+        working-directory: ${{ github.workspace }}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/
+        run: |
+          echo "Audit binaries ..."
+          ls -la
+          cargo audit bin ${{ env.TS_FILENAME }}${{ env.TS_EXT }}
+
+      - name: Archive and Checksum Binaries
+        shell: bash
+        run: |
+          # set -xo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/DIST"
+          cd "$GITHUB_WORKSPACE/DIST"
+          echo "Copying files for ${{ env.BINFILE }} to $(pwd)"
+          ls -alht "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/"
+          cp -v $GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${{ env.TS_FILENAME }}${TS_EXT} .
+          echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
+          echo "Compute files shasum"
+          ${SHARUN} * >> "${{ env.BINFILE }}.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.sha256"
+          echo "Checksum verification for files is "
+          ${SHARUN} --check "${{ env.BINFILE }}.sha256"
+          7z a "${{ env.BINFILE }}.zip" *
+          echo "Compute archive shasum"
+          ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.zip.sha256"
+          echo "Checksum verification archive is "
+          ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
+
+      - name: Artifact upload for Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ matrix.builds.tari_target_network }}-${{ env.VSHA_SHORT }}
+          path: |
+            ${{ github.workspace }}/DIST/*.zip*
+
+  create-release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+    runs-on: ubuntu-latest
+    needs: builds
+
+    env:
+      TS_VERSION: ${{ needs.builds.outputs.TS_VERSION }}
+      VSHA_SHORT: ${{ needs.builds.outputs.VSHA_SHORT }}
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ env.TS_FILENAME }}
+          pattern: "${{ env.TS_FILENAME }}*"
+          merge-multiple: true
+
+      - name: Verify checksums and Prep Uploads
+        shell: bash
+        working-directory: ${{ env.TS_FILENAME }}
+        run: |
+          # set -xo pipefail
+          sudo apt-get update
+          sudo apt-get --no-install-recommends --assume-yes install dos2unix
+          ls -alhtR
+          if [ -f "${{ env.TS_FILENAME }}-${{ env.TS_VERSION }}.${{ env.TS_SIG_FN }}" ] ; then
+            rm -fv "${{ env.TS_FILENAME }}-${{ env.TS_VERSION }}.${{ env.TS_SIG_FN }}"
+          fi
+          # Merge all sha256 files into one
+          find . -name "*.sha256" -type f -print | xargs cat >> "${{ env.TS_FILENAME }}-${{ env.TS_VERSION }}.${{ env.TS_SIG_FN }}"
+          dos2unix --quiet "${{ env.TS_FILENAME }}-${{ env.TS_VERSION }}.${{ env.TS_SIG_FN }}"
+          cat "${{ env.TS_FILENAME }}-${{ env.TS_VERSION }}.${{ env.TS_SIG_FN }}"
+          sha256sum --ignore-missing --check "${{ env.TS_FILENAME }}-${{ env.TS_VERSION }}.${{ env.TS_SIG_FN }}"
+          ls -alhtR
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.TS_FILENAME }}*/**/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: true
+          draft: true
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          replacesArtifacts: true
+          generateReleaseNotes: true

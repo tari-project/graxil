@@ -1,0 +1,183 @@
+---
+name: CI
+
+'on':
+  workflow_dispatch:
+  push:
+    branches:
+      - 'ci-*'
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+concurrency:
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/main' }}
+
+permissions: {}
+
+jobs:
+  ci-all:
+    name: ci-all
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gpu-dev
+
+      - name: install dependencies (linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --assume-yes \
+            libprotobuf-dev \
+            protobuf-compiler
+
+      - name: install dependencies (linux/OpenCL)
+        run: |
+          sudo apt-get install --no-install-recommends --assume-yes \
+            opencl-headers \
+            ocl-icd-opencl-dev
+
+      - name: Install nVida cuda toolkit
+        uses: jimver/cuda-toolkit@v0.2.22
+        with:
+          method: network
+          sub-packages: '["nvcc", "cudart"]'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2.7.5
+
+      - name: cargo format
+        if: ${{ !cancelled() }}
+        run: |
+          cargo fmt --all -- --check
+
+      - name: cargo machete
+        if: ${{ !cancelled() }}
+        run: |
+          cargo install --version 0.7.0 cargo-machete
+          cargo machete
+
+      - name: cargo vet
+        if: ${{ !cancelled() }}
+        run: |
+          cargo install cargo-vet@0.10.0 --locked
+          cargo vet
+
+  file-licenses:
+    name: file-licenses
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: gpu-dev
+
+      - name: install ripgrep
+        run: |
+          # https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb.sha256
+          wget -v https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
+          rg --version || exit 1
+
+      - name: run the license check
+        run: ./scripts/file_license_check.sh
+
+  ci-matrix:
+    name: ci ${{ matrix.platform }} - ${{ matrix.features }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'ubuntu-22.04'
+            features: 'nvidia,opencl'
+          - platform: 'macos-latest'
+            features: 'metal,opencl'
+          - platform: 'windows-latest'
+            features: 'nvidia,opencl'
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gpu-dev
+
+      - name: install dependencies (linux)
+        if: startsWith(runner.os,'Linux')
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --assume-yes \
+            libprotobuf-dev \
+            protobuf-compiler
+
+      - name: install dependencies (linux/OpenCL)
+        if: startsWith(runner.os,'Linux')
+        run: |
+          sudo apt-get install --no-install-recommends --assume-yes \
+            opencl-headers \
+            ocl-icd-opencl-dev
+
+      - name: install nVida cuda toolkit
+        if: contains(matrix.features, 'nvidia')
+        uses: jimver/cuda-toolkit@v0.2.22
+        with:
+          method: network
+          sub-packages: '["nvcc", "cudart"]'
+
+      - name: install dependencies (macOS)
+        if: startsWith(runner.os,'macOS')
+        shell: bash
+        run: |
+          # openssl, cmake and autoconf already installed
+          brew install zip coreutils automake protobuf
+          # Force static openssl libs
+          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+          # arm64
+          ls -la /opt/homebrew/opt/openssl/
+          echo "OPENSSL_LIB_DIR=/opt/homebrew/opt/openssl/lib" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/opt/homebrew/opt/openssl/include" >> $GITHUB_ENV
+
+      - name: install Windows dependencies
+        if: startsWith(runner.os,'Windows')
+        shell: bash
+        run: |
+          #  vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
+          # Bug in choco - need to install each package individually
+          #choco upgrade llvm -y
+          choco upgrade protoc -y
+          # choco upgrade opencl-intel-cpu-runtime -y
+          vcpkg.exe --triplet=x64-windows install opencl
+          # Needed for openssl via vcpkg
+          vcpkg install openssl:x64-windows-static
+          echo "VCPKG_ROOT=C:\vcpkg" >> $GITHUB_ENV
+          echo "OPENSSL_DIR=C:\vcpkg\packages\openssl_x64-windows-static" >> $GITHUB_ENV
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2.7.5
+
+      - name: clippy lint
+        if: ${{ !cancelled() }}
+        run: |
+          cargo install cargo-lints
+          cargo lints clippy --features ${{ matrix.features }}
+
+      - name: cargo check
+        if: ${{ !cancelled() }}
+        run: |
+          cargo check --release --workspace

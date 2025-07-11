@@ -1,0 +1,41 @@
+---
+name: PR
+
+'on':
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') && github.ref != 'refs/heads/main' }}
+
+permissions: {}
+
+jobs:
+  check-signed-commits:
+    name: Check signed commits
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: 1Password/check-signed-commits-action@v1
+
+  check-title:
+    name: Check title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Dependencies
+        run: |
+          npm install -g @commitlint/cli @commitlint/config-conventional
+          echo "module.exports = {extends: ['@commitlint/config-conventional']}" > commitlint.config.js
+
+      - name: Lint Title
+        env:
+          PR_TITLE: ${{github.event.pull_request.title}}
+        run: |
+          echo "$PR_TITLE" | commitlint

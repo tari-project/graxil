@@ -67,7 +67,7 @@ default = []
 tui = ["ratatui", "crossterm"]
 
 [[bin]]
-name = "sha3x-miner"
+name = "graxil"
 path = "src/main.rs"
 
 # Changelog:
