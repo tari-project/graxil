@@ -533,13 +533,6 @@ impl Args {
                             ));
                         }
                         
-                        if !base_address.starts_with("12") && !base_address.starts_with("14") {
-                            return Err(format!(
-                                "Tari wallet address must start with '12' (one-sided) or '14' (interactive). Found: '{}'",
-                                base_address
-                            ));
-                        }
-                        
                         if !base_address.chars().all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c)) {
                             return Err(format!(
                                 "Tari wallet address contains invalid characters (must be Base58). Found: '{}'",
