@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "sha3x-miner"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "async-channel",
