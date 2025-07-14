@@ -287,7 +287,9 @@ jobs:
           done
 
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
-          cd "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}"
+          mkdir -p "${GITHUB_WORKSPACE}/DIST"
+          cd "${GITHUB_WORKSPACE}/DIST"
+          cp -v "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/graxil" .
           echo "Compute files shasum"
           ${SHARUN} * >> "${{ env.BINFILE }}.sha256"
           echo "Show the shasum"
@@ -328,7 +330,7 @@ jobs:
         if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        uses: azure/trusted-signing-action@v0.5.9
+        uses: azure/trusted-signing-action@v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -362,6 +364,7 @@ jobs:
           cargo audit bin ${{ env.TS_FILENAME }}${{ env.TS_EXT }}
 
       - name: Archive and Checksum Binaries
+        if: ! startsWith(runner.os,'macOS')
         shell: bash
         run: |
           # set -xo pipefail
