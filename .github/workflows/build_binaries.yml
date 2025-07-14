@@ -342,6 +342,8 @@ jobs:
           certificate-profile-name: Tarilabs
           files-folder: ${{ github.workspace }}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/
           files-folder-filter: exe,dll
+          files-folder-recurse: false
+          files-folder-depth: 1
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
