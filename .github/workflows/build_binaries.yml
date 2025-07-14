@@ -16,6 +16,8 @@ env:
   TS_FILENAME: "graxil"
   TS_BUNDLE_ID_BASE: "com.tarilabs"
   TS_SIG_FN: "sha256-unsigned.txt"
+  ## Must be a JSON string
+  TS_FILES: '["graxil"]'
   # TS_BUILD: "debug"
   TS_BUILD: "release"
   matrix-json-file: ".github/workflows/build_binaries.json"
@@ -364,7 +366,7 @@ jobs:
           cargo audit bin ${{ env.TS_FILENAME }}${{ env.TS_EXT }}
 
       - name: Archive and Checksum Binaries
-        if: ! startsWith(runner.os,'macOS')
+        if: ${{ ! startsWith(runner.os,'macOS') }}
         shell: bash
         run: |
           # set -xo pipefail
