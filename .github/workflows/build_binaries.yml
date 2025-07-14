@@ -252,7 +252,6 @@ jobs:
 
       - name: Build the macOS Archive and code-sign
         if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
-        continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
           MACOS_APPLICATION_ID: ${{ secrets.MACOS_APPLICATION_ID }}
@@ -262,7 +261,7 @@ jobs:
           MACOS_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
           MACOS_ASC_PROVIDER: ${{ secrets.MACOS_ASC_PROVIDER }}
         run: |
-          set -xo pipefail
+          # set -xo pipefail
           echo "${MACOS_APPLICATION_CERT}" | base64 --decode > application.p12
           security create-keychain -p ${MACOS_KEYCHAIN_PASS} build.keychain
           security default-keychain -s build.keychain
@@ -285,7 +284,6 @@ jobs:
             # Verify codesign
             codesign --verify --deep --display --verbose=4 \
               "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${FILE}"
-
           done
 
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
@@ -355,7 +353,7 @@ jobs:
         shell: powershell
         working-directory: ${{ github.workspace }}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/
         run: |
-          ..\check_signatures.ps1 -ScanDir "."
+          ..\..\..\scripts\check_signatures.ps1 -ScanDir "."
 
       - name: Audit tree and feedback for binaries
         if: ${{ ( ! matrix.builds.cross ) }}
