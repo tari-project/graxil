@@ -364,7 +364,7 @@ jobs:
           cargo audit bin ${{ env.TS_FILENAME }}${{ env.TS_EXT }}
 
       - name: Archive and Checksum Binaries
-        if: ${{ ! startsWith(runner.os,'macOS') }}
+        # if: ${{ ! startsWith(runner.os,'macOS') }}
         shell: bash
         run: |
           # set -xo pipefail
