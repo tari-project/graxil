@@ -278,16 +278,16 @@ jobs:
             # Codesign
             codesign --options runtime --force --verify --verbose --timestamp ${OSX_CODESIGN_EXTRAS} \
               --sign "Developer ID Application: ${MACOS_APPLICATION_ID}" \
-              "${{ env.MTS_SOURCE }}/${FILE}"
+              "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${FILE}"
 
             # Verify codesign
             codesign --verify --deep --display --verbose=4 \
-              "${{ env.MTS_SOURCE }}/${FILE}"
+              "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${FILE}"
 
           done
 
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
-          cd "${{ env.MTS_SOURCE }}"
+          cd "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}"
           echo "Compute files shasum"
           ${SHARUN} * >> "${{ env.BINFILE }}.sha256"
           echo "Show the shasum"
@@ -365,11 +365,11 @@ jobs:
         shell: bash
         run: |
           # set -xo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/DIST"
-          cd "$GITHUB_WORKSPACE/DIST"
+          mkdir -p "${GITHUB_WORKSPACE}/DIST"
+          cd "${GITHUB_WORKSPACE}/DIST"
           echo "Copying files for ${{ env.BINFILE }} to $(pwd)"
-          ls -alht "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/"
-          cp -v $GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${{ env.TS_FILENAME }}${TS_EXT} .
+          ls -alht "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/"
+          cp -v ${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${{ env.TS_FILENAME }}${TS_EXT} .
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
           echo "Compute files shasum"
           ${SHARUN} * >> "${{ env.BINFILE }}.sha256"
