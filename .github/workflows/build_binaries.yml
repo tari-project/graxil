@@ -234,8 +234,6 @@ jobs:
         shell: bash
         env:
           RUSTFLAGS: ${{ matrix.builds.rustflags }}
-          TARI_NETWORK: ${{ matrix.builds.tari_network }}
-          TARI_TARGET_NETWORK: ${{ matrix.builds.tari_target_network }}
         working-directory: src
         run: |
           ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
