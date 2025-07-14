@@ -80,7 +80,7 @@ jobs:
           echo $matrix | json2yaml
 
   builds:
-    name: Building ${{ matrix.builds.name }} for ${{ matrix.builds.tari_target_network }}
+    name: Building ${{ matrix.builds.name }}
     needs: matrix-prep
     continue-on-error: ${{ matrix.builds.best_effort || false }}
     outputs:
@@ -112,7 +112,7 @@ jobs:
             "$GITHUB_WORKSPACE/Cargo.toml")
           echo "TS_VERSION=${TS_VERSION}" >> $GITHUB_ENV
           echo "TS_VERSION=${TS_VERSION}" >> $GITHUB_OUTPUT
-          BINFILE="${TS_FILENAME}-${{ matrix.builds.name }}-${{ matrix.builds.tari_target_network }}-${TS_VERSION}-${VSHA_SHORT}${TS_EXT}"
+          BINFILE="${TS_FILENAME}-${{ matrix.builds.name }}-${TS_VERSION}-${VSHA_SHORT}${TS_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "BINFILE=${BINFILE}" >> $GITHUB_OUTPUT
 
@@ -242,8 +242,6 @@ jobs:
         shell: bash
         env:
           RUSTFLAGS: ${{ matrix.builds.rustflags }}
-          TARI_NETWORK: ${{ matrix.builds.tari_network }}
-          TARI_TARGET_NETWORK: ${{ matrix.builds.tari_target_network }}
         working-directory: src
         run: |
           ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
