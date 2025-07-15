@@ -50,8 +50,17 @@ jobs:
         id: set-matrix
         shell: bash
         run: |
+          #
+          # build all targets images
+          # matrix=$( jq -s -c .[] .github/workflows/build_binaries.json )
+          #
+          # build only single target image
+          # matrix_selection=$( jq -c '.[] | select( ."name" == "windows-x64" )' ${{ env.matrix-json-file }} )
+          matrix_selection=$( jq -c '.[] | select( ."name" | contains("macos-arm64") )' ${{ env.matrix-json-file }} )
+          #
+
           # Get all build targets with build_enabled != false
-          matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
+          #matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
 
           # No network expansion — just wrap the list
           matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .}')
