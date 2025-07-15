@@ -56,11 +56,11 @@ jobs:
           #
           # build only single target image
           # matrix_selection=$( jq -c '.[] | select( ."name" == "windows-x64" )' ${{ env.matrix-json-file }} )
-          matrix_selection=$( jq -c '.[] | select( ."name" | contains("macos-arm64") )' ${{ env.matrix-json-file }} )
+          # matrix_selection=$( jq -c '.[] | select( ."name" | contains("macos-arm64") )' ${{ env.matrix-json-file }} )
           #
 
           # Get all build targets with build_enabled != false
-          #matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
+          matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
 
           # No network expansion — just wrap the list
           matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .}')
@@ -119,7 +119,7 @@ jobs:
             "$GITHUB_WORKSPACE/Cargo.toml")
           echo "TS_VERSION=${TS_VERSION}" >> $GITHUB_ENV
           echo "TS_VERSION=${TS_VERSION}" >> $GITHUB_OUTPUT
-          BINFILE="${TS_FILENAME}-${{ matrix.builds.name }}-v${TS_VERSION}-${VSHA_SHORT}${TS_EXT}"
+          BINFILE="${TS_FILENAME}-${{ matrix.builds.name }}-${TS_VERSION}-${VSHA_SHORT}${TS_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "BINFILE=${BINFILE}" >> $GITHUB_OUTPUT
 
@@ -196,9 +196,7 @@ jobs:
           curl -v -o "$GITHUB_WORKSPACE\psutils\getopt.ps1" "https://raw.githubusercontent.com/lukesampson/psutils/master/getopt.ps1"
           curl -v -o "$GITHUB_WORKSPACE\psutils\shasum.ps1" "https://raw.githubusercontent.com/lukesampson/psutils/master/shasum.ps1"
           echo "SHARUN=pwsh $GITHUB_WORKSPACE\psutils\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
-          #  vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
           # Bug in choco - need to install each package individually
-          #choco upgrade llvm -y
           choco upgrade protoc -y
           vcpkg.exe --triplet=x64-windows install opencl
           # Needed for openssl via vcpkg
