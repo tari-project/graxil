@@ -1,6 +1,33 @@
 // SHA3x (Tari) OpenCL Kernel - Exact match to CPU implementation
 // Input format: nonce(8 bytes LE) + header(32 bytes) + marker(1 byte) = 41 bytes
 // Algorithm: Triple SHA3-256 (exactly like CPU sha3x_hash_with_nonce)
+// SHA3x OpenCL - portable atomic_min_u64 fallback
+
+#ifndef HAS_ATOMIC_MIN_U64
+#define HAS_ATOMIC_MIN_U64 0
+#endif
+
+#if !HAS_ATOMIC_MIN_U64
+inline void atomic_min_u64(volatile __global ulong *p, ulong val) {
+    volatile __global uint *p32 = (volatile __global uint*)p;
+    while (true) {
+        uint old_lo = p32[0];
+        uint old_hi = p32[1];
+        ulong old = ((ulong)old_hi << 32) | old_lo;
+        if (val >= old) return;
+
+        uint val_lo = (uint)(val & 0xFFFFFFFFUL);
+        uint val_hi = (uint)(val >> 32);
+
+        uint prev_lo = atomic_cmpxchg(&p32[0], old_lo, val_lo);
+        uint prev_hi = atomic_cmpxchg(&p32[1], old_hi, val_hi);
+
+        if (prev_lo == old_lo && prev_hi == old_hi) break;
+    }
+}
+#else
+#define atomic_min_u64(p, val) atomic_min(p, val)
+#endif
 
 // Keccak-f[1600] implementation for SHA3-256
 constant ulong keccakf_rndc[24] = {
@@ -166,13 +193,13 @@ kernel void sha3(global ulong *header_buffer, ulong nonce_start, ulong target_va
         // Check if hash meets target (lower hash = higher difficulty)
         if (hash_value <= target_value) {
             // Found valid share!
-            atomic_min(&output[1], hash_value);
+            atomic_min_u64(&output[1], hash_value);
             if (output[0] == 0) {
                 output[0] = current_nonce;
             }
         } else {
             // Track best hash for statistics
-            atomic_min(&output[1], hash_value);
+            atomic_min_u64(&output[1], hash_value);
         }
     }
 }
