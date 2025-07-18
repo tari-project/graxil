@@ -37,15 +37,15 @@ use tracing::{debug, error, info};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame, Terminal,
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
-    Frame, Terminal,
 };
 
 #[derive(Parser, Debug)]
@@ -130,9 +130,9 @@ impl ThreadStats {
         } else {
             self.shares_rejected.fetch_add(1, Ordering::Relaxed);
         }
-        
+
         *self.last_share_time.lock().unwrap() = Some(Instant::now());
-        
+
         let current_best = self.best_difficulty.load(Ordering::Relaxed);
         if difficulty > current_best {
             self.best_difficulty.store(difficulty, Ordering::Relaxed);
@@ -155,7 +155,7 @@ impl ThreadStats {
     fn get_share_dots(&self) -> String {
         let accepted = self.shares_found.load(Ordering::Relaxed);
         let rejected = self.shares_rejected.load(Ordering::Relaxed);
-        
+
         let mut dots = String::new();
         for _ in 0..accepted.min(5) {
             dots.push('●');
@@ -221,7 +221,7 @@ impl MinerStats {
         if thread_id < self.thread_stats.len() {
             self.thread_stats[thread_id].record_share(difficulty, accepted);
         }
-        
+
         // Add to recent shares
         let mut shares = self.recent_shares.lock().unwrap();
         shares.push_back(ShareInfo {
@@ -239,7 +239,7 @@ impl MinerStats {
     fn update_hashrate_history(&self, total_hashes: u64) {
         let mut history = self.hashrate_history.lock().unwrap();
         history.push_back((Instant::now(), total_hashes));
-        
+
         // Keep only last 5 minutes
         let cutoff = Instant::now() - Duration::from_secs(300);
         while let Some((time, _)) = history.front() {
@@ -365,7 +365,10 @@ impl SHA3xMiner {
         Ok(TcpStream::connect(self.pool_address).await?)
     }
 
-    async fn login(&self, writer: &mut tokio::net::tcp::OwnedWriteHalf) -> Result<(), Box<dyn std::error::Error>> {
+    async fn login(
+        &self,
+        writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let login_request = serde_json::json!({
             "id": 1,
             "jsonrpc": "2.0",
@@ -389,7 +392,7 @@ impl SHA3xMiner {
         message: &str,
         job_tx: &broadcast::Sender<MiningJob>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        debug!("📨 Pool message: {}", message);
+        debug!(target: LOG_TARGET,"📨 Pool message: {}", message);
         let response: Value = serde_json::from_str(message)?;
 
         if let Some(method) = response.get("method").and_then(|m| m.as_str()) {
@@ -397,11 +400,14 @@ impl SHA3xMiner {
                 "job" => {
                     if let Some(params) = response.get("params").and_then(|p| p.as_object()) {
                         self.handle_new_job(params, job_tx).await?;
-                        
+
                         // Check for VarDiff update
                         if let Some(diff) = params.get("difficulty").and_then(|d| d.as_u64()) {
-                            self.stats.add_activity(format!("🔧 VarDiff update: {}", MinerStats::format_number(diff)));
-                            info!("🔧 VarDiff job update received");
+                            self.stats.add_activity(format!(
+                                "🔧 VarDiff update: {}",
+                                MinerStats::format_number(diff)
+                            ));
+                            info!(target: LOG_TARGET,"🔧 VarDiff job update received");
                         }
                     }
                 }
@@ -410,42 +416,50 @@ impl SHA3xMiner {
         } else if let Some(result) = response.get("result") {
             if let Some(id) = response.get("id").and_then(|id| id.as_u64()) {
                 if id == 1 {
-                    info!("✅ Login successful");
-                    self.stats.add_activity("🔐 Connected successfully".to_string());
+                    info!(target: LOG_TARGET,"✅ Login successful");
+                    self.stats
+                        .add_activity("🔐 Connected successfully".to_string());
                 } else if id >= 100 {
                     // Share submission response
                     let thread_id = (id - 100) as usize % self.num_threads;
-                    
+
                     // Check different possible response formats
-                    let accepted = if let Some(status) = result.get("status").and_then(|s| s.as_str()) {
+                    let accepted = if let Some(status) =
+                        result.get("status").and_then(|s| s.as_str())
+                    {
                         match status.to_lowercase().as_str() {
                             "ok" | "accepted" => true,
                             _ => {
-                                error!("❌ Share rejected with status: {} (full result: {:?})", status, result);
+                                error!(target: LOG_TARGET,
+                                    "❌ Share rejected with status: {} (full result: {:?})",
+                                    status, result
+                                );
                                 false
                             }
                         }
                     } else if result.is_null() {
                         // Some pools return null for accepted shares
-                        info!("✅ Share accepted (null response)");
+                        info!(target: LOG_TARGET,"✅ Share accepted (null response)");
                         true
                     } else if let Some(accepted) = result.as_bool() {
                         // Some pools return boolean
                         accepted
                     } else {
-                        error!("❌ Unknown share response format: {:?}", result);
+                        error!(target: LOG_TARGET,"❌ Unknown share response format: {:?}", result);
                         false
                     };
-                    
+
                     if accepted {
                         self.stats.shares_accepted.fetch_add(1, Ordering::Relaxed);
-                        info!("✅ Share accepted by pool");
-                        self.stats.add_activity(format!("✅ Share accepted from thread {}", thread_id));
+                        info!(target: LOG_TARGET,"✅ Share accepted by pool");
+                        self.stats
+                            .add_activity(format!("✅ Share accepted from thread {}", thread_id));
                     } else {
                         self.stats.shares_rejected.fetch_add(1, Ordering::Relaxed);
-                        self.stats.add_activity(format!("❌ Share rejected from thread {}", thread_id));
+                        self.stats
+                            .add_activity(format!("❌ Share rejected from thread {}", thread_id));
                     }
-                    
+
                     // Update thread stats
                     if thread_id < self.stats.thread_stats.len() {
                         self.stats.thread_stats[thread_id].record_share(0, accepted);
@@ -453,8 +467,9 @@ impl SHA3xMiner {
                 }
             }
         } else if response.get("error").is_some() {
-            error!("❌ Pool error: {}", message);
-            self.stats.add_activity(format!("🚫 Pool error: {}", message));
+            error!(target: LOG_TARGET,"❌ Pool error: {}", message);
+            self.stats
+                .add_activity(format!("🚫 Pool error: {}", message));
         }
 
         Ok(())
@@ -466,34 +481,38 @@ impl SHA3xMiner {
         job_tx: &broadcast::Sender<MiningJob>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let job: Job = serde_json::from_value(Value::Object(job_data.clone()))?;
-        
+
         let header_template = hex::decode(&job.blob)?;
-        
+
         let target_difficulty = if let Some(diff) = job.difficulty {
             diff
         } else {
             self.parse_target_difficulty(&job.target)
         };
-        
+
         let mining_job = MiningJob {
             job_id: job.job_id.clone(),
             header_template,
             target_difficulty,
             height: job.height,
         };
-        
+
         let _ = job_tx.send(mining_job);
-        
-        info!("📋 New job: {} (height: {}, difficulty: {})", 
-            job.job_id, job.height, MinerStats::format_number(target_difficulty));
-        
+
+        info!(target: LOG_TARGET,
+            "📋 New job: {} (height: {}, difficulty: {})",
+            job.job_id,
+            job.height,
+            MinerStats::format_number(target_difficulty)
+        );
+
         self.stats.add_activity(format!(
             "📋 New job: {} (height: {}, difficulty: {})",
             &job.job_id[..8],
             job.height,
             MinerStats::format_number(target_difficulty)
         ));
-        
+
         Ok(())
     }
 
@@ -502,10 +521,16 @@ impl SHA3xMiner {
             Ok(target_bytes) => {
                 if target_bytes.len() >= 8 {
                     let target_u64 = u64::from_le_bytes([
-                        target_bytes[0], target_bytes[1], target_bytes[2], target_bytes[3],
-                        target_bytes[4], target_bytes[5], target_bytes[6], target_bytes[7],
+                        target_bytes[0],
+                        target_bytes[1],
+                        target_bytes[2],
+                        target_bytes[3],
+                        target_bytes[4],
+                        target_bytes[5],
+                        target_bytes[6],
+                        target_bytes[7],
                     ]);
-                    
+
                     if target_u64 > 0 {
                         0xFFFFFFFFFFFFFFFFu64 / target_u64
                     } else {
@@ -524,11 +549,11 @@ impl SHA3xMiner {
         input.extend_from_slice(&nonce.to_le_bytes());
         input.extend_from_slice(header_template);
         input.push(1u8);
-        
+
         let hash1 = Sha3_256::digest(&input);
         let hash2 = Sha3_256::digest(&hash1);
         let hash3 = Sha3_256::digest(&hash2);
-        
+
         hash3.to_vec()
     }
 
@@ -536,16 +561,15 @@ impl SHA3xMiner {
         if hash.len() < 8 {
             return 0;
         }
-        
+
         let hash_u64 = u64::from_be_bytes([
-            hash[0], hash[1], hash[2], hash[3],
-            hash[4], hash[5], hash[6], hash[7],
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ]);
-        
+
         if hash_u64 == 0 {
             return u64::MAX;
         }
-        
+
         0xFFFFFFFFFFFFFFFFu64 / hash_u64
     }
 
@@ -557,18 +581,26 @@ impl SHA3xMiner {
         let num_threads = self.num_threads;
         let stats = Arc::clone(&self.stats);
         let should_stop = Arc::new(AtomicBool::new(false));
-        
-        info!("⚡ Starting {} mining threads", num_threads);
-        
+
+        info!(target: LOG_TARGET,"⚡ Starting {} mining threads", num_threads);
+
         for thread_id in 0..num_threads {
             let job_rx = job_tx.subscribe();
             let share_tx = share_tx.clone();
             let thread_stats = Arc::clone(&stats.thread_stats[thread_id]);
             let stats = Arc::clone(&stats);
             let should_stop = Arc::clone(&should_stop);
-            
+
             std::thread::spawn(move || {
-                Self::mining_thread(thread_id, num_threads, job_rx, share_tx, thread_stats, stats, should_stop);
+                Self::mining_thread(
+                    thread_id,
+                    num_threads,
+                    job_rx,
+                    share_tx,
+                    thread_stats,
+                    stats,
+                    should_stop,
+                );
             });
         }
     }
@@ -586,70 +618,84 @@ impl SHA3xMiner {
         let mut current_job: Option<MiningJob> = None;
         let mut hash_count = 0u64;
         let mut last_report = Instant::now();
-        
+
         loop {
             if should_stop.load(Ordering::Relaxed) {
                 break;
             }
-            
+
             match job_rx.try_recv() {
                 Ok(job) => {
-                    thread_stats.current_difficulty_target.store(job.target_difficulty, Ordering::Relaxed);
+                    thread_stats
+                        .current_difficulty_target
+                        .store(job.target_difficulty, Ordering::Relaxed);
                     current_job = Some(job);
                 }
                 Err(broadcast::error::TryRecvError::Empty) => {}
                 Err(_) => break,
             }
-            
+
             if let Some(ref job) = current_job {
                 let mut nonce = rng.random::<u64>();
                 nonce = nonce.wrapping_add(thread_id as u64);
-                
+
                 for _ in 0..10000 {
                     let hash = Self::sha3x_hash_with_nonce(&job.header_template, nonce);
                     let difficulty = Self::calculate_difficulty(&hash);
                     hash_count += 1;
-                    
+
                     if difficulty >= job.target_difficulty {
                         // Try both endianness for nonce
                         let nonce_hex = hex::encode(nonce.to_le_bytes());
                         let nonce_hex_be = hex::encode(nonce.to_be_bytes());
                         let result_hex = hex::encode(&hash);
-                        
+
                         thread_stats.record_share(difficulty, true);
-                        stats.record_share_found(thread_id, difficulty, job.target_difficulty, true);
-                        
-                        info!("💎 Thread {} found share! Difficulty: {}, Target: {}", 
-                            thread_id, 
-                            MinerStats::format_number(difficulty), 
-                            MinerStats::format_number(job.target_difficulty));
-                        
-                        info!("🔍 Share details - Nonce LE: {}, Nonce BE: {}", nonce_hex, nonce_hex_be);
-                        info!("🔍 Hash result: {}", result_hex);
-                        
+                        stats.record_share_found(
+                            thread_id,
+                            difficulty,
+                            job.target_difficulty,
+                            true,
+                        );
+
+                        info!(target: LOG_TARGET,
+                            "💎 Thread {} found share! Difficulty: {}, Target: {}",
+                            thread_id,
+                            MinerStats::format_number(difficulty),
+                            MinerStats::format_number(job.target_difficulty)
+                        );
+
+                        info!(target: LOG_TARGET,
+                            "🔍 Share details - Nonce LE: {}, Nonce BE: {}",
+                            nonce_hex, nonce_hex_be
+                        );
+                        info!(target: LOG_TARGET,"🔍 Hash result: {}", result_hex);
+
                         stats.add_activity(format!(
                             "💎 Thread {} found share! Difficulty: {}",
                             thread_id,
                             MinerStats::format_number(difficulty)
                         ));
-                        
+
                         let _ = share_tx.send((
                             job.job_id.clone(),
-                            nonce_hex_be,  // Try BE instead of LE
+                            nonce_hex_be, // Try BE instead of LE
                             result_hex,
                             thread_id,
                             difficulty,
                         ));
-                        
+
                         stats.shares_submitted.fetch_add(1, Ordering::Relaxed);
                     }
-                    
+
                     nonce = nonce.wrapping_add(num_threads as u64);
                 }
-                
+
                 if last_report.elapsed() > Duration::from_secs(1) {
                     thread_stats.update_hashrate(hash_count);
-                    stats.hashes_computed.fetch_add(hash_count, Ordering::Relaxed);
+                    stats
+                        .hashes_computed
+                        .fetch_add(hash_count, Ordering::Relaxed);
                     stats.update_hashrate_history(stats.hashes_computed.load(Ordering::Relaxed));
                     hash_count = 0;
                     last_report = Instant::now();
@@ -667,11 +713,12 @@ impl SHA3xMiner {
     ) {
         let wallet_address = self.wallet_address.clone();
         let num_threads = self.num_threads;
-        
+
         tokio::spawn(async move {
             let mut submit_id = 100;
-            
-            while let Some((job_id, nonce, result, thread_id, _difficulty)) = share_rx.recv().await {
+
+            while let Some((job_id, nonce, result, thread_id, _difficulty)) = share_rx.recv().await
+            {
                 let submit_request = serde_json::json!({
                     "id": submit_id + thread_id as u64,
                     "jsonrpc": "2.0",
@@ -683,16 +730,19 @@ impl SHA3xMiner {
                         "result": result
                     }
                 });
-                
-                info!("📤 Submitting share: {}", submit_request);
-                info!("📤 Details - job_id: {}, nonce: {}, result: {}", job_id, nonce, result);
-                
+
+                info!(target: LOG_TARGET,"📤 Submitting share: {}", submit_request);
+                info!(target: LOG_TARGET,
+                    "📤 Details - job_id: {}, nonce: {}, result: {}",
+                    job_id, nonce, result
+                );
+
                 let message = format!("{}\n", submit_request);
                 let mut writer = writer.lock().await;
                 if let Err(e) = writer.write_all(message.as_bytes()).await {
-                    error!("Failed to submit share: {}", e);
+                    error!(target: LOG_TARGET,"Failed to submit share: {}", e);
                 }
-                
+
                 submit_id += num_threads as u64;
             }
         });
@@ -702,26 +752,26 @@ impl SHA3xMiner {
         if self.enable_tui {
             return;
         }
-        
+
         let stats = Arc::clone(&self.stats);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let total_hashes = stats.hashes_computed.load(Ordering::Relaxed);
                 let shares_submitted = stats.shares_submitted.load(Ordering::Relaxed);
                 let shares_accepted = stats.shares_accepted.load(Ordering::Relaxed);
-                
+
                 let acceptance_rate = if shares_submitted > 0 {
                     (shares_accepted as f64 / shares_submitted as f64) * 100.0
                 } else {
                     0.0
                 };
-                
-                info!(
+
+                info!(target: LOG_TARGET,
                     "📊 Stats: {} | Shares: {}/{} ({:.1}%) | Hashes: {}",
                     MinerStats::format_hashrate(stats.get_total_hashrate()),
                     shares_accepted,
@@ -739,14 +789,14 @@ impl SHA3xMiner {
         execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
-        
+
         let mut current_tab = 0;
-        
+
         loop {
             terminal.draw(|f| {
                 self.draw_ui(f, current_tab);
             })?;
-            
+
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
                     match key.code {
@@ -762,7 +812,7 @@ impl SHA3xMiner {
                 }
             }
         }
-        
+
         disable_raw_mode()?;
         execute!(
             terminal.backend_mut(),
@@ -770,7 +820,7 @@ impl SHA3xMiner {
             DisableMouseCapture
         )?;
         terminal.show_cursor()?;
-        
+
         Ok(())
     }
 
@@ -779,10 +829,14 @@ impl SHA3xMiner {
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
             .split(f.area());
-        
+
         let titles = vec!["Overview", "Threads", "Shares"];
         let tabs = Tabs::new(titles)
-            .block(Block::default().borders(Borders::ALL).title("SHA3x Miner Dashboard"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("SHA3x Miner Dashboard"),
+            )
             .select(current_tab)
             .style(Style::default().fg(Color::Cyan))
             .highlight_style(
@@ -791,7 +845,7 @@ impl SHA3xMiner {
                     .bg(Color::Black),
             );
         f.render_widget(tabs, chunks[0]);
-        
+
         match current_tab {
             0 => self.draw_overview(f, chunks[1]),
             1 => self.draw_threads(f, chunks[1]),
@@ -803,111 +857,205 @@ impl SHA3xMiner {
     fn draw_overview(&self, f: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Length(5),
-                Constraint::Length(3),
-                Constraint::Min(0),
-            ].as_ref())
+            .constraints(
+                [
+                    Constraint::Length(3),
+                    Constraint::Length(5),
+                    Constraint::Length(3),
+                    Constraint::Min(0),
+                ]
+                .as_ref(),
+            )
             .split(area);
-        
+
         // Pool connection info
-        let pool_info = vec![
-            Line::from(vec![
-                Span::styled("Pool: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(self.pool_address.to_string(), Style::default().fg(Color::Cyan)),
-                Span::raw("  "),
-                Span::styled("Worker: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(&self.worker_name, Style::default().fg(Color::Green)),
-            ]),
-        ];
+        let pool_info = vec![Line::from(vec![
+            Span::styled(
+                "Pool: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                self.pool_address.to_string(),
+                Style::default().fg(Color::Cyan),
+            ),
+            Span::raw("  "),
+            Span::styled(
+                "Worker: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(&self.worker_name, Style::default().fg(Color::Green)),
+        ])];
         let pool_block = Paragraph::new(pool_info)
             .block(Block::default().borders(Borders::ALL).title("Connection"));
         f.render_widget(pool_block, chunks[0]);
-        
+
         // Mining statistics
         let total_hashrate = self.stats.get_total_hashrate();
         let shares_submitted = self.stats.shares_submitted.load(Ordering::Relaxed);
         let shares_accepted = self.stats.shares_accepted.load(Ordering::Relaxed);
         let shares_rejected = self.stats.shares_rejected.load(Ordering::Relaxed);
-        
+
         let acceptance_rate = if shares_submitted > 0 {
             (shares_accepted as f64 / shares_submitted as f64) * 100.0
         } else {
             0.0
         };
-        
+
         let acceptance_color = if acceptance_rate >= 95.0 {
             Color::Green
         } else if acceptance_rate >= 85.0 {
-            Color::Yellow  
+            Color::Yellow
         } else {
             Color::Red
         };
-        
+
         let rejected_color = if shares_rejected == 0 {
             Color::Green
         } else {
             Color::Red
         };
-        
+
         let uptime = self.stats.start_time.elapsed();
         let current_diff = if let Some(share) = self.stats.recent_shares.lock().unwrap().back() {
             share.target
         } else {
             0
         };
-        
+
         let stats_text = vec![
             Line::from(vec![
-                Span::styled("Hashrate: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(MinerStats::format_hashrate(total_hashrate), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Hashrate: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    MinerStats::format_hashrate(total_hashrate),
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("  "),
-                Span::styled("Shares: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{}/{}", shares_accepted, shares_submitted), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    "Shares: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{}/{}", shares_accepted, shares_submitted),
+                    Style::default().fg(Color::Cyan),
+                ),
                 Span::raw(" "),
-                Span::styled(format!("({:.1}%)", acceptance_rate), Style::default().fg(acceptance_color)),
+                Span::styled(
+                    format!("({:.1}%)", acceptance_rate),
+                    Style::default().fg(acceptance_color),
+                ),
             ]),
             Line::from(vec![
-                Span::styled("Accepted: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(shares_accepted.to_string(), Style::default().fg(Color::Green)),
+                Span::styled(
+                    "Accepted: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    shares_accepted.to_string(),
+                    Style::default().fg(Color::Green),
+                ),
                 Span::raw("  "),
-                Span::styled("Rejected: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(shares_rejected.to_string(), Style::default().fg(rejected_color)),
+                Span::styled(
+                    "Rejected: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    shares_rejected.to_string(),
+                    Style::default().fg(rejected_color),
+                ),
                 Span::raw("  "),
-                Span::styled("Difficulty: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(MinerStats::format_number(current_diff), Style::default().fg(Color::Magenta)),
+                Span::styled(
+                    "Difficulty: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    MinerStats::format_number(current_diff),
+                    Style::default().fg(Color::Magenta),
+                ),
             ]),
             Line::from(vec![
-                Span::styled("Uptime: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{}h {}m {}s", uptime.as_secs() / 3600, (uptime.as_secs() % 3600) / 60, uptime.as_secs() % 60), Style::default().fg(Color::Blue)),
+                Span::styled(
+                    "Uptime: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(
+                        "{}h {}m {}s",
+                        uptime.as_secs() / 3600,
+                        (uptime.as_secs() % 3600) / 60,
+                        uptime.as_secs() % 60
+                    ),
+                    Style::default().fg(Color::Blue),
+                ),
                 Span::raw("  "),
-                Span::styled("Threads: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{}/{}", self.stats.get_active_thread_count(), self.num_threads), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    "Threads: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(
+                        "{}/{}",
+                        self.stats.get_active_thread_count(),
+                        self.num_threads
+                    ),
+                    Style::default().fg(Color::Cyan),
+                ),
             ]),
         ];
-        
-        let stats_block = Paragraph::new(stats_text)
-            .block(Block::default().borders(Borders::ALL).title("Mining Statistics"));
+
+        let stats_block = Paragraph::new(stats_text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Mining Statistics"),
+        );
         f.render_widget(stats_block, chunks[1]);
-        
+
         // Worker info
         let wallet_short = if self.wallet_address.len() > 40 {
-            format!("{}...{}", &self.wallet_address[..20], &self.wallet_address[self.wallet_address.len()-20..])
+            format!(
+                "{}...{}",
+                &self.wallet_address[..20],
+                &self.wallet_address[self.wallet_address.len() - 20..]
+            )
         } else {
             self.wallet_address.clone()
         };
-        
-        let worker_info = vec![
-            Line::from(vec![
-                Span::styled("Wallet: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(wallet_short, Style::default().fg(Color::Cyan)),
-            ]),
-        ];
+
+        let worker_info = vec![Line::from(vec![
+            Span::styled(
+                "Wallet: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(wallet_short, Style::default().fg(Color::Cyan)),
+        ])];
         let worker_block = Paragraph::new(worker_info)
             .block(Block::default().borders(Borders::ALL).title("Worker"));
         f.render_widget(worker_block, chunks[2]);
-        
+
         // Recent activity
         let mut activity_lines = vec![];
         let activities = self.stats.recent_activity.lock().unwrap();
@@ -920,9 +1068,13 @@ impl SHA3xMiner {
                 Span::raw(message),
             ]));
         }
-        
+
         let activity_block = Paragraph::new(activity_lines)
-            .block(Block::default().borders(Borders::ALL).title("Recent Activity"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Recent Activity"),
+            )
             .wrap(ratatui::widgets::Wrap { trim: true });
         f.render_widget(activity_block, chunks[3]);
     }
@@ -930,12 +1082,9 @@ impl SHA3xMiner {
     fn draw_threads(&self, f: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(8),
-                Constraint::Min(0),
-            ].as_ref())
+            .constraints([Constraint::Length(8), Constraint::Min(0)].as_ref())
             .split(area);
-        
+
         self.draw_thread_summary(f, chunks[0]);
         self.draw_thread_grid(f, chunks[1]);
     }
@@ -945,67 +1094,121 @@ impl SHA3xMiner {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
             .split(area);
-        
+
         // Left side - Stats and hashrate graph
         let left_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
             .split(chunks[0]);
-        
+
         // Summary stats
         let total_hashrate = self.stats.get_total_hashrate();
         let active_threads = self.stats.get_active_thread_count();
         let avg_per_thread = self.stats.get_avg_hashrate_per_thread();
         let total_shares = self.stats.shares_submitted.load(Ordering::Relaxed);
         let share_rate = self.stats.get_share_rate_per_minute();
-        let last_share_time = self.stats.recent_shares.lock().unwrap()
+        let last_share_time = self
+            .stats
+            .recent_shares
+            .lock()
+            .unwrap()
             .back()
             .map(|s| s.time.elapsed())
             .unwrap_or(Duration::from_secs(0));
-        
+
         let summary_text = vec![
             Line::from(vec![
-                Span::styled("Total Hashrate: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(MinerStats::format_hashrate(total_hashrate), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Total Hashrate: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    MinerStats::format_hashrate(total_hashrate),
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("    "),
-                Span::styled("Active Threads: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{}/{}", active_threads, self.num_threads), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    "Active Threads: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{}/{}", active_threads, self.num_threads),
+                    Style::default().fg(Color::Cyan),
+                ),
                 Span::raw("    "),
-                Span::styled("Avg per Thread: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(MinerStats::format_hashrate(avg_per_thread), Style::default().fg(Color::Blue)),
+                Span::styled(
+                    "Avg per Thread: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    MinerStats::format_hashrate(avg_per_thread),
+                    Style::default().fg(Color::Blue),
+                ),
             ]),
             Line::from(vec![
-                Span::styled("Total Shares: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Total Shares: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(total_shares.to_string(), Style::default().fg(Color::Green)),
                 Span::raw("    "),
-                Span::styled("Recent Activity: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(MinerStats::format_duration(last_share_time), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    "Recent Activity: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    MinerStats::format_duration(last_share_time),
+                    Style::default().fg(Color::Cyan),
+                ),
                 Span::raw("    "),
-                Span::styled("Share Rate: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{:.1}/min", share_rate), Style::default().fg(Color::Magenta)),
+                Span::styled(
+                    "Share Rate: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{:.1}/min", share_rate),
+                    Style::default().fg(Color::Magenta),
+                ),
             ]),
         ];
-        
-        let summary_block = Paragraph::new(summary_text)
-            .block(Block::default().borders(Borders::ALL).title("Summary Stats"));
+
+        let summary_block = Paragraph::new(summary_text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Summary Stats"),
+        );
         f.render_widget(summary_block, left_chunks[0]);
-        
+
         // Hashrate graph
         let graph_block = Block::default()
             .borders(Borders::ALL)
             .title("Hashrate Graph (Last 5 min)");
         f.render_widget(graph_block, left_chunks[1]);
-        
+
         let graph_text = self.create_hashrate_graph();
         let graph = Paragraph::new(graph_text);
         f.render_widget(graph, left_chunks[1]);
-        
+
         // Right side - Share timeline
         let share_timeline_block = Block::default()
             .borders(Borders::ALL)
             .title("Share Timeline (Last 10 shares)");
         f.render_widget(share_timeline_block, chunks[1]);
-        
+
         let timeline_text = self.create_share_timeline();
         let timeline = Paragraph::new(timeline_text);
         f.render_widget(timeline, chunks[1]);
@@ -1015,14 +1218,14 @@ impl SHA3xMiner {
         let block = Block::default()
             .borders(Borders::ALL)
             .title("Active Threads (24x3 Dynamic Grid)");
-        
+
         let inner_area = block.inner(area);
         f.render_widget(block, area);
-        
+
         // Calculate grid dimensions
         let cols_per_row = 24;
         let cell_height = 4;
-        
+
         // Get active threads
         let mut active_threads = Vec::new();
         for (idx, thread_stat) in self.stats.thread_stats.iter().enumerate() {
@@ -1030,12 +1233,12 @@ impl SHA3xMiner {
                 active_threads.push((idx, thread_stat));
             }
         }
-        
+
         // Create grid lines
         let mut row_lines = vec![String::new(); cell_height];
         let mut current_col = 0;
         let mut grid_lines = vec![];
-        
+
         for (idx, thread_stat) in &active_threads {
             let hashrate = thread_stat.get_hashrate();
             let hashrate_str = if hashrate >= 1_000_000.0 {
@@ -1045,20 +1248,23 @@ impl SHA3xMiner {
             } else {
                 format!("{:.0}", hashrate)
             };
-            
+
             let share_dots = thread_stat.get_share_dots();
             let accepted = thread_stat.shares_found.load(Ordering::Relaxed);
             let rejected = thread_stat.shares_rejected.load(Ordering::Relaxed);
-            
-            let last_share = thread_stat.last_share_time.lock().unwrap()
+
+            let last_share = thread_stat
+                .last_share_time
+                .lock()
+                .unwrap()
                 .map(|t| MinerStats::format_duration(t.elapsed()))
                 .unwrap_or_else(|| "---".to_string());
-            
+
             // Build cell
             row_lines[0] += &format!("┌──────");
             row_lines[1] += &format!("│{:^6}", format!("{:02}", idx));
             row_lines[2] += &format!("│{:>5} ", hashrate_str);
-            
+
             // Add share dots with proper coloring logic
             if !share_dots.is_empty() {
                 let mut dot_str = String::new();
@@ -1072,11 +1278,11 @@ impl SHA3xMiner {
             } else {
                 row_lines[2] += &format!("{:<6}", "");
             }
-            
+
             row_lines[3] += &format!("│{:>5} ", &last_share[..last_share.len().min(5)]);
-            
+
             current_col += 1;
-            
+
             // Start new row if needed
             if current_col >= cols_per_row || idx == &active_threads.last().unwrap().0 {
                 // Close the row
@@ -1087,12 +1293,12 @@ impl SHA3xMiner {
                         row_lines[i] += "│";
                     }
                 }
-                
+
                 // Add to grid lines
                 for line in &row_lines {
                     grid_lines.push(Line::from(line.clone()));
                 }
-                
+
                 // Add bottom border if not last row
                 if idx != &active_threads.last().unwrap().0 {
                     let mut bottom_line = String::new();
@@ -1102,13 +1308,13 @@ impl SHA3xMiner {
                     bottom_line += "┘";
                     grid_lines.push(Line::from(bottom_line));
                 }
-                
+
                 // Reset for next row
                 row_lines = vec![String::new(); cell_height];
                 current_col = 0;
             }
         }
-        
+
         // Add final bottom border
         if !grid_lines.is_empty() && current_col > 0 {
             let mut bottom_line = String::new();
@@ -1118,7 +1324,7 @@ impl SHA3xMiner {
             bottom_line += "┘";
             grid_lines.push(Line::from(bottom_line));
         }
-        
+
         // Add legend
         grid_lines.push(Line::from(""));
         grid_lines.push(Line::from(vec![
@@ -1128,7 +1334,7 @@ impl SHA3xMiner {
             Span::styled("○ Rejected", Style::default().fg(Color::Red)),
             Span::raw(" | Time = Last Share Age"),
         ]));
-        
+
         let grid_paragraph = Paragraph::new(grid_lines);
         f.render_widget(grid_paragraph, inner_area);
     }
@@ -1136,24 +1342,21 @@ impl SHA3xMiner {
     fn draw_shares(&self, f: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(8),
-                Constraint::Min(0),
-            ].as_ref())
+            .constraints([Constraint::Length(8), Constraint::Min(0)].as_ref())
             .split(area);
-        
+
         self.draw_share_summary(f, chunks[0]);
-        
+
         // Recent shares with details
         let shares_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
             .split(chunks[1]);
-        
+
         // Recent shares list
         let mut share_lines = vec![];
         let shares = self.stats.recent_shares.lock().unwrap();
-        
+
         for share in shares.iter().rev().take(20) {
             let luck = share.difficulty as f64 / share.target as f64;
             let luck_indicator = if luck >= 10.0 {
@@ -1165,35 +1368,53 @@ impl SHA3xMiner {
             } else {
                 ""
             };
-            
+
             let status_color = if share.accepted {
                 Color::Green
             } else {
                 Color::Red
             };
-            
+
             let status_symbol = if share.accepted { "●" } else { "○" };
-            
+
             share_lines.push(Line::from(vec![
-                Span::styled(MinerStats::format_duration(share.time.elapsed()), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    MinerStats::format_duration(share.time.elapsed()),
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::raw(": "),
-                Span::styled(format!("Thread {:02}", share.thread_id), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!("Thread {:02}", share.thread_id),
+                    Style::default().fg(Color::Cyan),
+                ),
                 Span::raw(": "),
-                Span::styled(MinerStats::format_number(share.difficulty), Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    MinerStats::format_number(share.difficulty),
+                    Style::default().fg(Color::Yellow),
+                ),
                 Span::raw(" (target: "),
-                Span::styled(MinerStats::format_number(share.target), Style::default().fg(Color::Magenta)),
+                Span::styled(
+                    MinerStats::format_number(share.target),
+                    Style::default().fg(Color::Magenta),
+                ),
                 Span::raw(") - "),
-                Span::styled(format!("{:.2}x luck", luck), Style::default().fg(Color::Blue)),
+                Span::styled(
+                    format!("{:.2}x luck", luck),
+                    Style::default().fg(Color::Blue),
+                ),
                 Span::raw(" "),
                 Span::styled(status_symbol, Style::default().fg(status_color)),
                 Span::raw(luck_indicator),
             ]));
         }
-        
-        let shares_block = Paragraph::new(share_lines)
-            .block(Block::default().borders(Borders::ALL).title("Recent Shares (Luck Analysis)"));
+
+        let shares_block = Paragraph::new(share_lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Recent Shares (Luck Analysis)"),
+        );
         f.render_widget(shares_block, shares_chunks[0]);
-        
+
         // Thread performance leaders
         let mut thread_shares: Vec<(usize, u64, u64)> = Vec::new();
         for (idx, thread) in self.stats.thread_stats.iter().enumerate() {
@@ -1204,38 +1425,50 @@ impl SHA3xMiner {
             }
         }
         thread_shares.sort_by(|a, b| b.1.cmp(&a.1));
-        
+
         let total_shares = self.stats.shares_submitted.load(Ordering::Relaxed);
         let mut leader_lines = vec![
-            Line::from(vec![
-                Span::styled("Thread Performance Leaders", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            ]),
+            Line::from(vec![Span::styled(
+                "Thread Performance Leaders",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )]),
             Line::from(""),
         ];
-        
+
         for (i, (thread_id, accepted, _rejected)) in thread_shares.iter().take(5).enumerate() {
             let percentage = if total_shares > 0 {
                 (*accepted as f64 / total_shares as f64) * 100.0
             } else {
                 0.0
             };
-            
+
             leader_lines.push(Line::from(vec![
                 Span::raw(format!("{}. ", i + 1)),
-                Span::styled(format!("Thread {:02}", thread_id), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!("Thread {:02}", thread_id),
+                    Style::default().fg(Color::Cyan),
+                ),
                 Span::raw(": "),
-                Span::styled(format!("{} shares", accepted), Style::default().fg(Color::Green)),
+                Span::styled(
+                    format!("{} shares", accepted),
+                    Style::default().fg(Color::Green),
+                ),
                 Span::raw(format!(" ({:.1}% of total)", percentage)),
             ]));
         }
-        
+
         // Problem analysis
         leader_lines.push(Line::from(""));
-        leader_lines.push(Line::from(vec![
-            Span::styled("Problem Analysis", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]));
+        leader_lines.push(Line::from(vec![Span::styled(
+            "Problem Analysis",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]));
         leader_lines.push(Line::from(""));
-        
+
         let mut has_problems = false;
         for (thread_id, accepted, rejected) in &thread_shares {
             if *rejected > 0 {
@@ -1244,7 +1477,10 @@ impl SHA3xMiner {
                 if reject_rate > 5.0 {
                     has_problems = true;
                     leader_lines.push(Line::from(vec![
-                        Span::styled(format!("Thread {:02}", thread_id), Style::default().fg(Color::Red)),
+                        Span::styled(
+                            format!("Thread {:02}", thread_id),
+                            Style::default().fg(Color::Red),
+                        ),
                         Span::raw(": "),
                         Span::raw(format!("{}/{} ({:.1}%)", rejected, total, reject_rate)),
                         Span::styled(" ⚠️", Style::default().fg(Color::Yellow)),
@@ -1252,13 +1488,14 @@ impl SHA3xMiner {
                 }
             }
         }
-        
+
         if !has_problems {
-            leader_lines.push(Line::from(vec![
-                Span::styled("All threads operating normally", Style::default().fg(Color::Green)),
-            ]));
+            leader_lines.push(Line::from(vec![Span::styled(
+                "All threads operating normally",
+                Style::default().fg(Color::Green),
+            )]));
         }
-        
+
         let leaders_block = Paragraph::new(leader_lines)
             .block(Block::default().borders(Borders::ALL).title("Analysis"));
         f.render_widget(leaders_block, shares_chunks[1]);
@@ -1269,26 +1506,30 @@ impl SHA3xMiner {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
             .split(area);
-        
+
         // Left side - Share summary stats
         let total_shares = self.stats.shares_submitted.load(Ordering::Relaxed);
         let accepted = self.stats.shares_accepted.load(Ordering::Relaxed);
         let rejected = self.stats.shares_rejected.load(Ordering::Relaxed);
-        
+
         let acceptance_rate = if total_shares > 0 {
             (accepted as f64 / total_shares as f64) * 100.0
         } else {
             0.0
         };
-        
-        let best_share = self.stats.thread_stats.iter()
+
+        let best_share = self
+            .stats
+            .thread_stats
+            .iter()
             .map(|t| t.best_difficulty.load(Ordering::Relaxed))
             .max()
             .unwrap_or(0);
-        
+
         let avg_luck = if let Ok(shares) = self.stats.recent_shares.lock() {
             if !shares.is_empty() {
-                let total_luck: f64 = shares.iter()
+                let total_luck: f64 = shares
+                    .iter()
                     .map(|s| s.difficulty as f64 / s.target as f64)
                     .sum();
                 total_luck / shares.len() as f64
@@ -1298,45 +1539,104 @@ impl SHA3xMiner {
         } else {
             0.0
         };
-        
-        let last_share_time = self.stats.recent_shares.lock().unwrap()
+
+        let last_share_time = self
+            .stats
+            .recent_shares
+            .lock()
+            .unwrap()
             .back()
             .map(|s| s.time.elapsed())
             .unwrap_or(Duration::from_secs(999));
-        
+
         let summary_lines = vec![
             Line::from(vec![
-                Span::styled("Total: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{} shares", total_shares), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    "Total: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{} shares", total_shares),
+                    Style::default().fg(Color::Cyan),
+                ),
                 Span::raw("    "),
-                Span::styled("Accepted: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{} ({:.1}%)", accepted, acceptance_rate), Style::default().fg(Color::Green)),
+                Span::styled(
+                    "Accepted: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{} ({:.1}%)", accepted, acceptance_rate),
+                    Style::default().fg(Color::Green),
+                ),
                 Span::raw("    "),
-                Span::styled("Rejected: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{} ({:.1}%)", rejected, 100.0 - acceptance_rate), Style::default().fg(if rejected == 0 { Color::Green } else { Color::Red })),
+                Span::styled(
+                    "Rejected: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{} ({:.1}%)", rejected, 100.0 - acceptance_rate),
+                    Style::default().fg(if rejected == 0 {
+                        Color::Green
+                    } else {
+                        Color::Red
+                    }),
+                ),
             ]),
             Line::from(vec![
-                Span::styled("Best Share: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(MinerStats::format_number(best_share), Style::default().fg(Color::Magenta)),
+                Span::styled(
+                    "Best Share: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    MinerStats::format_number(best_share),
+                    Style::default().fg(Color::Magenta),
+                ),
                 Span::raw("    "),
-                Span::styled("Avg Luck: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{:.1}x", avg_luck), Style::default().fg(Color::Blue)),
+                Span::styled(
+                    "Avg Luck: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{:.1}x", avg_luck),
+                    Style::default().fg(Color::Blue),
+                ),
                 Span::raw("    "),
-                Span::styled("Last Share: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(MinerStats::format_duration(last_share_time), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    "Last Share: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    MinerStats::format_duration(last_share_time),
+                    Style::default().fg(Color::Cyan),
+                ),
             ]),
         ];
-        
-        let summary_block = Paragraph::new(summary_lines)
-            .block(Block::default().borders(Borders::ALL).title("Share Summary"));
+
+        let summary_block = Paragraph::new(summary_lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Share Summary"),
+        );
         f.render_widget(summary_block, chunks[0]);
-        
+
         // Right side - Share rate graph
         let graph_block = Block::default()
             .borders(Borders::ALL)
             .title("Share Rate Trend (shares/minute)");
         f.render_widget(graph_block, chunks[1]);
-        
+
         let rate_graph = self.create_share_rate_graph();
         let graph = Paragraph::new(rate_graph);
         f.render_widget(graph, chunks[1]);
@@ -1347,18 +1647,18 @@ impl SHA3xMiner {
         if history.is_empty() {
             return vec![Line::from("No data yet...")];
         }
-        
+
         let max_points = 20;
         let height = 4;
-        
+
         // Calculate hashrates at intervals
         let mut rates = Vec::new();
         let now = Instant::now();
         let interval = Duration::from_secs(15);
-        
+
         for i in 0..max_points {
             let target_time = now - (interval * (max_points - i - 1) as u32);
-            
+
             // Find closest data point
             let mut closest_hashes = 0u64;
             for (time, hashes) in history.iter() {
@@ -1366,29 +1666,29 @@ impl SHA3xMiner {
                     closest_hashes = *hashes;
                 }
             }
-            
+
             let rate = if closest_hashes > 0 {
                 let elapsed = self.stats.start_time.elapsed().as_secs_f64();
                 closest_hashes as f64 / elapsed
             } else {
                 0.0
             };
-            
+
             rates.push(rate);
         }
-        
+
         let max_rate = rates.iter().fold(0.0f64, |a, &b| a.max(b));
         if max_rate == 0.0 {
             return vec![Line::from("Waiting for data...")];
         }
-        
+
         let mut lines = vec![];
-        
+
         // Create graph
         for h in (0..height).rev() {
             let threshold = max_rate * (h as f64 + 1.0) / height as f64;
             let mut line_str = String::new();
-            
+
             for rate in &rates {
                 if *rate >= threshold {
                     line_str.push('█');
@@ -1398,14 +1698,18 @@ impl SHA3xMiner {
                     line_str.push(' ');
                 }
             }
-            
+
             lines.push(Line::from(line_str));
         }
-        
+
         // Add scale
-        lines.push(Line::from(format!("└{} {}", "─".repeat(20), MinerStats::format_hashrate(max_rate))));
+        lines.push(Line::from(format!(
+            "└{} {}",
+            "─".repeat(20),
+            MinerStats::format_hashrate(max_rate)
+        )));
         lines.push(Line::from("  5m  4m  3m  2m  1m  now"));
-        
+
         lines
     }
 
@@ -1414,37 +1718,38 @@ impl SHA3xMiner {
         if shares.is_empty() {
             return vec![Line::from("No shares found yet...")];
         }
-        
+
         let mut lines = vec![];
         let now = Instant::now();
-        
+
         // Get last 10 shares
         let recent: Vec<_> = shares.iter().rev().take(10).collect();
-        
+
         for share in recent.iter() {
             let time_ago = now.duration_since(share.time);
             let mins_ago = time_ago.as_secs() / 60;
             let secs_ago = time_ago.as_secs() % 60;
-            
+
             let time_str = if mins_ago > 0 {
                 format!("{:02}:{:02}", mins_ago, secs_ago)
             } else {
                 format!("   :{:02}", secs_ago)
             };
-            
+
             let symbol = if share.accepted { "●" } else { "○" };
-            
-            lines.push(Line::from(format!("{} {} Thread {:02} ({}x luck)",
+
+            lines.push(Line::from(format!(
+                "{} {} Thread {:02} ({}x luck)",
                 time_str,
                 symbol,
                 share.thread_id,
                 (share.difficulty as f64 / share.target as f64) as u64
             )));
         }
-        
+
         lines.push(Line::from(""));
         lines.push(Line::from("(● = accepted, ○ = rejected)"));
-        
+
         lines
     }
 
@@ -1453,38 +1758,39 @@ impl SHA3xMiner {
         if shares.len() < 2 {
             return vec![Line::from("Insufficient data...")];
         }
-        
+
         // Calculate share rates per minute over time
         let mut rates = Vec::new();
         let now = Instant::now();
         let interval = Duration::from_secs(60);
-        
+
         for i in 0..10 {
             let window_start = now - (interval * (10 - i));
             let window_end = window_start + interval;
-            
-            let count = shares.iter()
+
+            let count = shares
+                .iter()
                 .filter(|s| s.time >= window_start && s.time < window_end)
                 .count();
-            
+
             rates.push(count as f64);
         }
-        
+
         let max_rate = rates.iter().fold(0.0f64, |a, &b| a.max(b));
         if max_rate == 0.0 {
             return vec![Line::from("No shares in recent history...")];
         }
-        
+
         let height = 4;
         let mut lines = vec![];
-        
+
         // Create graph
         for h in (0..height).rev() {
             let threshold = max_rate * (h as f64 + 1.0) / height as f64;
             let mut line_str = String::new();
-            
+
             line_str.push_str(&format!("{:2} ", (threshold as u64)));
-            
+
             for rate in &rates {
                 if *rate >= threshold {
                     line_str.push_str("██");
@@ -1494,36 +1800,36 @@ impl SHA3xMiner {
                     line_str.push_str("  ");
                 }
             }
-            
+
             lines.push(Line::from(line_str));
         }
-        
+
         lines.push(Line::from("   └10m─8m─6m─4m─2m─now"));
-        
+
         lines
     }
 
     async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let stream = self.connect_to_pool().await?;
-        info!("✅ Connected to pool");
+        info!(target: LOG_TARGET,"✅ Connected to pool");
         self.stats.add_activity("🔐 Connected to pool".to_string());
-        
+
         let (reader, writer) = stream.into_split();
         let writer = Arc::new(tokio::sync::Mutex::new(writer));
-        
+
         // Login
         self.login(&mut *writer.lock().await).await?;
-        info!("🔐 Login request sent");
-        
+        info!(target: LOG_TARGET,"🔐 Login request sent");
+
         // Create channels
         let (job_tx, _) = broadcast::channel(16);
         let (share_tx, share_rx) = mpsc::unbounded_channel();
-        
+
         // Start threads
         self.start_mining_threads(job_tx.clone(), share_tx);
         self.start_share_submitter(Arc::clone(&writer), share_rx);
         self.start_stats_printer();
-        
+
         // Start TUI if enabled
         let tui_handle = if self.enable_tui {
             let stats = Arc::clone(&self.stats);
@@ -1531,7 +1837,7 @@ impl SHA3xMiner {
             let worker_name = self.worker_name.clone();
             let wallet_address = self.wallet_address.clone();
             let num_threads = self.num_threads;
-            
+
             Some(tokio::spawn(async move {
                 let miner = SHA3xMiner {
                     wallet_address,
@@ -1541,29 +1847,29 @@ impl SHA3xMiner {
                     stats,
                     enable_tui: true,
                 };
-                
+
                 if let Err(e) = miner.run_tui().await {
-                    error!("TUI error: {}", e);
+                    error!(target: LOG_TARGET,"TUI error: {}", e);
                 }
             }))
         } else {
             None
         };
-        
+
         // Read pool messages
         let reader = BufReader::new(reader);
         let mut lines = reader.lines();
-        
+
         while let Some(line) = lines.next_line().await? {
             if let Err(e) = self.handle_pool_message(&line, &job_tx).await {
-                error!("Error handling pool message: {}", e);
+                error!(target: LOG_TARGET,"Error handling pool message: {}", e);
             }
         }
-        
+
         if let Some(handle) = tui_handle {
             handle.abort();
         }
-        
+
         Ok(())
     }
 }
@@ -1571,19 +1877,22 @@ impl SHA3xMiner {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    
-    if !args.tui {
-        tracing_subscriber::fmt::init();
-    }
-    
-    info!("🚀 Starting SHA3x Tari Miner");
-    info!("📍 Pool: {}", args.pool);
-    info!("💳 Wallet: {}", args.wallet);
-    info!("👷 Worker: {}", args.worker);
-    info!("🧵 Threads: {}", if args.threads == 0 { "auto".to_string() } else { args.threads.to_string() });
-    
+
+    info!(target: LOG_TARGET,"🚀 Starting SHA3x Tari Miner");
+    info!(target: LOG_TARGET,"📍 Pool: {}", args.pool);
+    info!(target: LOG_TARGET,"💳 Wallet: {}", args.wallet);
+    info!(target: LOG_TARGET,"👷 Worker: {}", args.worker);
+    info!(target: LOG_TARGET,
+        "🧵 Threads: {}",
+        if args.threads == 0 {
+            "auto".to_string()
+        } else {
+            args.threads.to_string()
+        }
+    );
+
     let pool_address: SocketAddr = args.pool.parse()?;
-    
+
     let miner = SHA3xMiner::new(
         args.wallet,
         pool_address,
@@ -1591,9 +1900,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.threads,
         args.tui,
     );
-    
+
     miner.run().await?;
-    
+
     Ok(())
 }
 

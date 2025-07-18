@@ -9,22 +9,24 @@
 // FIXED: LuckyPool XN (extra nonce) parsing and nonce generation - compilation issues resolved
 // ADDED: Connection latency monitoring - updates every 5 seconds like CPU miner
 
-use crate::core::{parse_target_difficulty, Algorithm, PoolJob, MiningJob};
+use crate::Result;
 use crate::core::types::GpuSettings;
+use crate::core::{Algorithm, MiningJob, PoolJob, parse_target_difficulty};
 use crate::miner::stats::MinerStats;
 use crate::pool::{PoolClient, protocol::StratumProtocol};
-use crate::Result;
+use log::{debug, error, info};
+use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncWriteExt, BufReader, AsyncBufReadExt};
-use tokio::sync::mpsc;
-use tokio::sync::broadcast::{self, Sender as BroadcastSender};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
-use serde_json::Value;
+use tokio::sync::broadcast::{self, Sender as BroadcastSender};
+use tokio::sync::mpsc;
 
 use super::manager::GpuManager;
+
+const LOG_TARGET: &str = "tari::graxil::gpu_miner";
 
 pub struct GpuMiner {
     wallet_address: String,
@@ -48,7 +50,14 @@ impl GpuMiner {
         gpu_manager: GpuManager,
     ) -> Result<Self> {
         let gpu_settings = GpuSettings::default();
-        Self::new_with_settings(wallet_address, pool_address, worker_name, algo, gpu_manager, gpu_settings)
+        Self::new_with_settings(
+            wallet_address,
+            pool_address,
+            worker_name,
+            algo,
+            gpu_manager,
+            gpu_settings,
+        )
     }
 
     /// Create a new GPU miner with GPU settings
@@ -60,27 +69,32 @@ impl GpuMiner {
         mut gpu_manager: GpuManager,
         gpu_settings: GpuSettings,
     ) -> Result<Self> {
-        info!("🎮 Creating GPU miner with settings: intensity={}%, batch={:?}", 
-              gpu_settings.intensity, gpu_settings.batch_size);
+        info!(target: LOG_TARGET,
+            "🎮 Creating GPU miner with settings: intensity={}%, batch={:?}",
+            gpu_settings.intensity, gpu_settings.batch_size
+        );
 
         // Apply GPU settings to manager
         gpu_manager.set_gpu_settings(gpu_settings.clone());
 
         // Initialize GPU manager
-        gpu_manager.initialize()
+        gpu_manager
+            .initialize()
             .map_err(|e| format!("Failed to initialize GPU manager: {}", e))?;
-        
+
         // Create stats for GPU threads (1 per GPU device)
         let gpu_count = gpu_manager.device_count();
         let mut stats = MinerStats::new(gpu_count);
         stats.set_algorithm(algo);
-        
+
         // Create pool client and register it with stats
         let pool_client = Arc::new(PoolClient::new());
         stats.set_pool_client(Arc::clone(&pool_client));
 
-        info!("🎮 GPU miner created with {} device(s) and {}% intensity", 
-              gpu_count, gpu_settings.intensity);
+        info!(target: LOG_TARGET,
+            "🎮 GPU miner created with {} device(s) and {}% intensity",
+            gpu_count, gpu_settings.intensity
+        );
 
         Ok(Self {
             wallet_address,
@@ -107,19 +121,25 @@ impl GpuMiner {
         external_pool_client: Arc<PoolClient>,
         thread_id_offset: usize,
     ) -> Result<Self> {
-        info!("🎮 Creating GPU miner for hybrid mode: offset={}, intensity={}%", 
-              thread_id_offset, gpu_settings.intensity);
+        info!(target: LOG_TARGET,
+            "🎮 Creating GPU miner for hybrid mode: offset={}, intensity={}%",
+            thread_id_offset, gpu_settings.intensity
+        );
 
         // Apply GPU settings and thread offset to manager
         gpu_manager.set_gpu_settings(gpu_settings.clone());
         gpu_manager.set_thread_id_offset(thread_id_offset);
 
         // Initialize GPU manager with settings
-        gpu_manager.initialize()
+        gpu_manager
+            .initialize()
             .map_err(|e| format!("Failed to initialize GPU manager for hybrid: {}", e))?;
 
-        info!("🎮 GPU miner created for hybrid mode with {} device(s), offset={}", 
-              gpu_manager.device_count(), thread_id_offset);
+        info!(target: LOG_TARGET,
+            "🎮 GPU miner created for hybrid mode with {} device(s), offset={}",
+            gpu_manager.device_count(),
+            thread_id_offset
+        );
 
         Ok(Self {
             wallet_address,
@@ -136,8 +156,10 @@ impl GpuMiner {
 
     /// Update GPU settings after creation
     pub fn set_gpu_settings(&mut self, settings: GpuSettings) {
-        info!("🎮 Updating GPU miner settings: intensity={}%, batch={:?}", 
-              settings.intensity, settings.batch_size);
+        info!(target: LOG_TARGET,
+            "🎮 Updating GPU miner settings: intensity={}%, batch={:?}",
+            settings.intensity, settings.batch_size
+        );
         self.gpu_settings = settings.clone();
         self.gpu_manager.set_gpu_settings(settings);
     }
@@ -168,12 +190,17 @@ impl GpuMiner {
 
     /// Login to pool
     async fn login(&self, writer: &mut tokio::net::tcp::OwnedWriteHalf) -> Result<()> {
-        let login_msg = StratumProtocol::to_message(
-            StratumProtocol::create_login_request(&self.wallet_address, &self.worker_name, self.algo)
-        );
+        let login_msg = StratumProtocol::to_message(StratumProtocol::create_login_request(
+            &self.wallet_address,
+            &self.worker_name,
+            self.algo,
+        ));
         writer.write_all(login_msg.as_bytes()).await?;
         writer.flush().await?;
-        info!("📤 Sent GPU miner login request ({}% intensity)", self.gpu_settings.intensity);
+        info!(target: LOG_TARGET,
+            "📤 Sent GPU miner login request ({}% intensity)",
+            self.gpu_settings.intensity
+        );
         Ok(())
     }
 
@@ -181,28 +208,28 @@ impl GpuMiner {
     async fn handle_connection_events(&self) {
         // Track connection events and update latency every 5 seconds
         let mut interval = tokio::time::interval(Duration::from_secs(5));
-        
+
         loop {
             interval.tick().await;
-            
+
             if self.pool_client.is_connected() {
                 // Measure current connection latency by timing a lightweight operation
                 let start = Instant::now();
-                
+
                 // Simple connection health check - measure how responsive the connection is
                 let latency = start.elapsed();
-                
+
                 // Update the pool client with current latency (add some realistic variation)
                 let actual_latency = Duration::from_millis(
-                    (latency.as_millis() as u64 + 20 + (rand::random::<u64>() % 30)).max(10)
+                    (latency.as_millis() as u64 + 20 + (rand::random::<u64>() % 30)).max(10),
                 );
-                
+
                 self.pool_client.update_latency(actual_latency);
-                
-                debug!("Updated GPU pool latency: {}ms", actual_latency.as_millis());
+
+                debug!(target: LOG_TARGET,"Updated GPU pool latency: {}ms", actual_latency.as_millis());
             } else {
                 // Connection lost - this would be called in real disconnect scenarios
-                debug!("GPU pool connection lost, stopping latency monitoring");
+                debug!(target: LOG_TARGET,"GPU pool connection lost, stopping latency monitoring");
                 break;
             }
         }
@@ -214,56 +241,63 @@ impl GpuMiner {
         message: &str,
         job_tx: &BroadcastSender<MiningJob>,
     ) -> Result<()> {
-        debug!("📨 GPU miner pool message: {}", message);
+        debug!(target: LOG_TARGET,"📨 GPU miner pool message: {}", message);
         let response: Value = serde_json::from_str(message)?;
 
         if let Some(method) = response.get("method").and_then(|m| m.as_str()) {
             match method {
                 "job" => {
-                    debug!("Processing GPU job message: {:?}", response);
+                    debug!(target: LOG_TARGET,"Processing GPU job message: {:?}", response);
                     if let Some(params) = response.get("params").and_then(|p| p.as_object()) {
                         self.handle_new_job(params, job_tx).await?;
                         if let Some(diff) = params.get("difficulty").and_then(|d| d.as_u64()) {
-                            self.stats.add_activity(format!("🎮 GPU VarDiff update: {} ({}% intensity)", 
-                                                           MinerStats::format_number(diff), self.gpu_settings.intensity));
-                            info!("🎮 GPU VarDiff job update received");
+                            self.stats.add_activity(format!(
+                                "🎮 GPU VarDiff update: {} ({}% intensity)",
+                                MinerStats::format_number(diff),
+                                self.gpu_settings.intensity
+                            ));
+                            info!(target: LOG_TARGET,"🎮 GPU VarDiff job update received");
                         }
                     }
                 }
                 _ => {
-                    debug!("Unknown method: {}", method);
+                    debug!(target: LOG_TARGET,"Unknown method: {}", method);
                 }
             }
         } else if let Some(result) = response.get("result") {
-            debug!("GPU miner result response: {:?}", result);
+            debug!(target: LOG_TARGET,"GPU miner result response: {:?}", result);
             if let Some(id) = response.get("id").and_then(|id| id.as_u64()) {
                 match id {
                     1 => {
-                        info!("✅ GPU miner login successful");
-                        self.stats.add_activity("🎮 GPU connected successfully".to_string());
+                        info!(target: LOG_TARGET,"✅ GPU miner login successful");
+                        self.stats
+                            .add_activity("🎮 GPU connected successfully".to_string());
                         if let Some(job_params) = result.get("job").and_then(|j| j.as_object()) {
-                            debug!("Found job in GPU login response: {:?}", job_params);
+                            debug!(target: LOG_TARGET,"Found job in GPU login response: {:?}", job_params);
                             self.handle_new_job(job_params, job_tx).await?;
                         }
                     }
                     id if id >= 200 => {
                         let gpu_id = (id - 200) as usize;
-                        debug!("GPU share response for ID {} (GPU {}): {:?}", id, gpu_id, result);
-                        
+                        debug!(target: LOG_TARGET,
+                            "GPU share response for ID {} (GPU {}): {:?}",
+                            id, gpu_id, result
+                        );
+
                         // FIXED: LuckyPool share validation - check response.error first
                         let accepted = if let Some(error) = response.get("error") {
                             // LuckyPool: check error field first
                             if error.is_null() {
                                 // Error is null, check result
                                 if let Some(result_bool) = result.as_bool() {
-                                    result_bool  // result == true means accepted
+                                    result_bool // result == true means accepted
                                 } else {
                                     // Result exists but not boolean - assume accepted if error is null
                                     true
                                 }
                             } else {
                                 // Error is not null, share was rejected
-                                error!("❌ GPU share rejected by LuckyPool: {:?}", error);
+                                error!(target: LOG_TARGET,"❌ GPU share rejected by LuckyPool: {:?}", error);
                                 false
                             }
                         } else {
@@ -271,29 +305,42 @@ impl GpuMiner {
                             if let Some(status) = result.get("status").and_then(|s| s.as_str()) {
                                 matches!(status.to_lowercase().as_str(), "ok" | "accepted")
                             } else if result.is_null() {
-                                info!("✅ GPU share accepted (null response)");
+                                info!(target: LOG_TARGET,"✅ GPU share accepted (null response)");
                                 true
                             } else if let Some(accepted) = result.as_bool() {
                                 accepted
                             } else {
-                                error!("❌ Unknown GPU share response format: {:?}", result);
+                                error!(target: LOG_TARGET,"❌ Unknown GPU share response format: {:?}", result);
                                 false
                             }
                         };
 
                         if accepted {
                             self.stats.shares_accepted.fetch_add(1, Ordering::Relaxed);
-                            info!("✅ GPU share accepted by pool ({}% intensity)", self.gpu_settings.intensity);
-                            self.stats.add_activity(format!("✅ GPU share accepted from device {}", gpu_id));
+                            info!(target: LOG_TARGET,
+                                "✅ GPU share accepted by pool ({}% intensity)",
+                                self.gpu_settings.intensity
+                            );
+                            self.stats.add_activity(format!(
+                                "✅ GPU share accepted from device {}",
+                                gpu_id
+                            ));
                         } else {
                             self.stats.shares_rejected.fetch_add(1, Ordering::Relaxed);
-                            info!("❌ GPU share rejected from device {}", gpu_id);
-                            self.stats.add_activity(format!("❌ GPU share rejected from device {}", gpu_id));
+                            info!(target: LOG_TARGET,"❌ GPU share rejected from device {}", gpu_id);
+                            self.stats.add_activity(format!(
+                                "❌ GPU share rejected from device {}",
+                                gpu_id
+                            ));
                         }
 
                         // For hybrid mode, need to account for thread ID offset
                         let thread_id = if self.external_stats {
-                            self.gpu_manager.threads.get(gpu_id).map(|t| t.thread_id).unwrap_or(gpu_id)
+                            self.gpu_manager
+                                .threads
+                                .get(gpu_id)
+                                .map(|t| t.thread_id)
+                                .unwrap_or(gpu_id)
                         } else {
                             gpu_id
                         };
@@ -306,10 +353,11 @@ impl GpuMiner {
                 }
             }
         } else if let Some(error) = response.get("error") {
-            error!("❌ GPU pool error: {:?}", error);
-            self.stats.add_activity(format!("🚫 GPU pool error: {}", error));
+            error!(target: LOG_TARGET,"❌ GPU pool error: {:?}", error);
+            self.stats
+                .add_activity(format!("🚫 GPU pool error: {}", error));
         } else {
-            debug!("Unknown GPU pool message: {:?}", response);
+            debug!(target: LOG_TARGET,"Unknown GPU pool message: {:?}", response);
         }
 
         Ok(())
@@ -322,18 +370,23 @@ impl GpuMiner {
         job_tx: &BroadcastSender<MiningJob>,
     ) -> Result<()> {
         let job: PoolJob = serde_json::from_value(Value::Object(job_data.clone()))?;
-        
+
         let header_template = hex::decode(&job.blob.unwrap_or_default())?;
-        let target_difficulty = job.difficulty.unwrap_or_else(|| parse_target_difficulty(&job.target, self.algo));
-        
+        let target_difficulty = job
+            .difficulty
+            .unwrap_or_else(|| parse_target_difficulty(&job.target, self.algo));
+
         // FIXED: Handle XN (extra nonce) properly without borrow issues
         let xn_info = if let Some(ref xn) = job.xn {
-            info!("🔧 LuckyPool XN detected: {} (will be used as first 2 bytes of nonce)", xn);
+            info!(target: LOG_TARGET,
+                "🔧 LuckyPool XN detected: {} (will be used as first 2 bytes of nonce)",
+                xn
+            );
             format!(" XN: {}", xn)
         } else {
             String::new()
         };
-        
+
         let mining_job = MiningJob {
             job_id: job.job_id.clone(),
             mining_hash: header_template,
@@ -351,17 +404,25 @@ impl GpuMiner {
         };
 
         // Update stats with job data
-        self.stats.update_job(job.job_id.clone(), job.height, target_difficulty);
+        self.stats
+            .update_job(job.job_id.clone(), job.height, target_difficulty);
 
         job_tx.send(mining_job)?;
-        
-        info!("🎮 GPU job sent: {} (height: {}, difficulty: {}, {}% intensity{})", 
-            job.job_id, job.height, MinerStats::format_number(target_difficulty), 
-            self.gpu_settings.intensity, xn_info);
+
+        info!(target: LOG_TARGET,
+            "🎮 GPU job sent: {} (height: {}, difficulty: {}, {}% intensity{})",
+            job.job_id,
+            job.height,
+            MinerStats::format_number(target_difficulty),
+            self.gpu_settings.intensity,
+            xn_info
+        );
         self.stats.add_activity(format!(
             "🎮 GPU job: {} (height: {}, difficulty: {}{})",
-            &job.job_id[..8.min(job.job_id.len())], job.height, 
-            MinerStats::format_number(target_difficulty), xn_info
+            &job.job_id[..8.min(job.job_id.len())],
+            job.height,
+            MinerStats::format_number(target_difficulty),
+            xn_info
         ));
 
         Ok(())
@@ -379,7 +440,9 @@ impl GpuMiner {
         static GPU_SUBMIT_ID: AtomicU32 = AtomicU32::new(200); // Start at 200 for GPU shares
 
         tokio::spawn(async move {
-            while let Some((job_id, nonce, result, gpu_id, difficulty, _extranonce2, _ntime)) = share_rx.recv().await {
+            while let Some((job_id, nonce, result, gpu_id, difficulty, _extranonce2, _ntime)) =
+                share_rx.recv().await
+            {
                 let submit_request = StratumProtocol::create_submit_request(
                     &wallet_address,
                     &job_id,
@@ -392,16 +455,22 @@ impl GpuMiner {
                 );
                 let message = StratumProtocol::to_message(submit_request);
                 if message.is_empty() {
-                    error!("Failed to create GPU submit message for job {}", job_id);
+                    error!(target: LOG_TARGET,"Failed to create GPU submit message for job {}", job_id);
                     continue;
                 }
 
-                info!("📤 Submitting GPU share: job_id={}, nonce={}, gpu={}, difficulty={} ({}% intensity)", 
-                    job_id, nonce, gpu_id, MinerStats::format_number(difficulty), intensity);
+                info!(target: LOG_TARGET,
+                    "📤 Submitting GPU share: job_id={}, nonce={}, gpu={}, difficulty={} ({}% intensity)",
+                    job_id,
+                    nonce,
+                    gpu_id,
+                    MinerStats::format_number(difficulty),
+                    intensity
+                );
 
                 let mut writer = writer.lock().await;
                 if let Err(e) = writer.write_all(message.as_bytes()).await {
-                    error!("Failed to submit GPU share: {}", e);
+                    error!(target: LOG_TARGET,"Failed to submit GPU share: {}", e);
                 }
             }
         });
@@ -417,7 +486,7 @@ impl GpuMiner {
             loop {
                 interval.tick().await;
                 let dashboard_id = format!("{:016x}", rand::random::<u64>());
-                info!("📊 GPU MINING DASHBOARD - {}", dashboard_id);
+                info!(target: LOG_TARGET,"📊 GPU MINING DASHBOARD - {}", dashboard_id);
                 stats.display_dashboard(&dashboard_id);
             }
         });
@@ -431,13 +500,14 @@ impl GpuMiner {
 
         // Don't connect to pool if using external pool client (hybrid mode)
         if self.external_stats {
-            info!("🎮 GPU miner running in hybrid mode - using shared pool connection");
+            info!(target: LOG_TARGET,"🎮 GPU miner running in hybrid mode - using shared pool connection");
             return self.run_mining_only().await;
         }
 
         let stream = self.connect_to_pool().await?;
-        info!("✅ GPU miner connected to SHA3x pool");
-        self.stats.add_activity("🎮 GPU connected to pool".to_string());
+        info!(target: LOG_TARGET,"✅ GPU miner connected to SHA3x pool");
+        self.stats
+            .add_activity("🎮 GPU connected to pool".to_string());
 
         let (reader, writer) = stream.into_split();
         let writer = Arc::new(Mutex::new(writer));
@@ -447,13 +517,17 @@ impl GpuMiner {
             let mut writer_guard = writer.lock().await;
             self.login(&mut *writer_guard).await?;
         }
-        info!("🎮 GPU miner login request sent");
+        info!(target: LOG_TARGET,"🎮 GPU miner login request sent");
 
         let (job_tx, _) = broadcast::channel(16);
-        let (share_tx, share_rx) = mpsc::unbounded_channel::<(String, String, String, usize, u64, String, u32)>();
+        let (share_tx, share_rx) =
+            mpsc::unbounded_channel::<(String, String, String, usize, u64, String, u32)>();
 
         // Start GPU mining threads
-        info!("🎮 Starting GPU mining with settings: {}", self.get_performance_summary());
+        info!(target: LOG_TARGET,
+            "🎮 Starting GPU mining with settings: {}",
+            self.get_performance_summary()
+        );
         self.start_mining_threads(job_tx.subscribe(), share_tx)?;
 
         Self::start_gpu_share_submitter(self.clone(), Arc::clone(&writer), share_rx);
@@ -468,8 +542,10 @@ impl GpuMiner {
         let reader = BufReader::new(reader);
         let mut lines = reader.lines();
 
-        info!("🚀 GPU miner fully operational - delivering 385+ MH/s with {}% intensity!", 
-              self.gpu_settings.intensity);
+        info!(target: LOG_TARGET,
+            "🚀 GPU miner fully operational - delivering 385+ MH/s with {}% intensity!",
+            self.gpu_settings.intensity
+        );
 
         loop {
             match lines.next_line().await {
@@ -477,13 +553,13 @@ impl GpuMiner {
                     self.handle_pool_message(&line, &job_tx).await?;
                 }
                 Ok(None) => {
-                    info!("📡 GPU connection closed, attempting reconnect...");
+                    info!(target: LOG_TARGET,"📡 GPU connection closed, attempting reconnect...");
                     self.pool_client.mark_disconnected();
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     break;
                 }
                 Err(e) => {
-                    error!("📡 GPU connection error: {}, attempting reconnect...", e);
+                    error!(target: LOG_TARGET,"📡 GPU connection error: {}, attempting reconnect...", e);
                     self.pool_client.mark_disconnected();
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     break;
@@ -496,18 +572,21 @@ impl GpuMiner {
 
     /// Run mining only (for hybrid mode where pool connection is handled externally)
     async fn run_mining_only(self: Arc<Self>) -> Result<()> {
-        info!("🎮 Starting GPU mining component for hybrid mode");
-        info!("🎮 Settings: {}", self.get_performance_summary());
+        info!(target: LOG_TARGET,"🎮 Starting GPU mining component for hybrid mode");
+        info!(target: LOG_TARGET,"🎮 Settings: {}", self.get_performance_summary());
 
         // Create dummy channels for mining threads (they won't be used in hybrid mode)
         let (job_tx, _job_rx) = broadcast::channel(16);
-        let (share_tx, _share_rx) = mpsc::unbounded_channel::<(String, String, String, usize, u64, String, u32)>();
+        let (share_tx, _share_rx) =
+            mpsc::unbounded_channel::<(String, String, String, usize, u64, String, u32)>();
 
         // Start mining threads
         self.start_mining_threads(job_tx.subscribe(), share_tx)?;
 
-        info!("🚀 GPU mining component started for hybrid mode with {}% intensity!", 
-              self.gpu_settings.intensity);
+        info!(target: LOG_TARGET,
+            "🚀 GPU mining component started for hybrid mode with {}% intensity!",
+            self.gpu_settings.intensity
+        );
 
         // Keep the component alive
         loop {
@@ -522,15 +601,17 @@ impl GpuMiner {
         share_tx: mpsc::UnboundedSender<(String, String, String, usize, u64, String, u32)>,
     ) -> Result<()> {
         let gpu_count = self.gpu_manager.device_count();
-        info!("🎮 Starting {} GPU mining thread(s) with {}% intensity", 
-              gpu_count, self.gpu_settings.intensity);
-        
+        info!(target: LOG_TARGET,
+            "🎮 Starting {} GPU mining thread(s) with {}% intensity",
+            gpu_count, self.gpu_settings.intensity
+        );
+
         // Get GPU devices and threads from manager
         let devices = &self.gpu_manager.devices;
         let threads = &self.gpu_manager.threads;
         let stats = Arc::clone(&self.stats);
         let gpu_settings = self.gpu_settings.clone();
-        
+
         // Start GPU mining threads manually (same approach as in run() method)
         for (i, device) in devices.iter().enumerate() {
             let device_clone = device.clone();
@@ -541,17 +622,19 @@ impl GpuMiner {
             let estimated_hashrate = threads[i].estimated_hashrate;
             let thread_id = threads[i].thread_id; // Use the actual thread ID (0 for GPU-only, offset for hybrid)
             let settings_clone = gpu_settings.clone();
-            
-            info!("🎮 Launching GPU mining thread {} for {} (~{:.1} MH/s, {}% intensity)", 
-                  thread_id, device_name, estimated_hashrate, gpu_settings.intensity);
-            
+
+            info!(target: LOG_TARGET,
+                "🎮 Launching GPU mining thread {} for {} (~{:.1} MH/s, {}% intensity)",
+                thread_id, device_name, estimated_hashrate, gpu_settings.intensity
+            );
+
             // Spawn GPU mining thread using std::thread for OpenCL safety
             std::thread::spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
                     .expect("Failed to create GPU thread runtime");
-                
+
                 rt.block_on(async {
                     super::manager::GpuManager::gpu_mining_loop_with_settings(
                         thread_id,
@@ -560,12 +643,16 @@ impl GpuMiner {
                         share_tx_clone,
                         stats_thread_clone,
                         settings_clone,
-                    ).await;
+                    )
+                    .await;
                 });
             });
         }
-        
-        info!("🚀 GPU mining threads started with {}% intensity!", self.gpu_settings.intensity);
+
+        info!(target: LOG_TARGET,
+            "🚀 GPU mining threads started with {}% intensity!",
+            self.gpu_settings.intensity
+        );
         Ok(())
     }
 }

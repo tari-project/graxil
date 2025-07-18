@@ -20,11 +20,13 @@
 // - Format utilities for dashboard display
 // - Extensible architecture for future AMD/Intel GPU support
 
+use log::{debug, info, warn};
 use serde::Serialize;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tracing::{debug, info, warn};
+
+const LOG_TARGET: &str = "tari::graxil::gpu_info";
 
 /// GPU information structure for dashboard and monitoring
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -108,48 +110,48 @@ impl GpuInfo {
 
     /// Detect and gather GPU information from available sources
     pub fn detect() -> Self {
-        debug!("Starting GPU detection...");
-        
+        debug!(target: LOG_TARGET,"Starting GPU detection...");
+
         // Try NVIDIA first (most common for mining)
         match Self::detect_nvidia() {
             GpuDetectionResult::Success(gpu_info) => {
-                info!("NVIDIA GPU detected: {}", gpu_info.name);
+                info!(target: LOG_TARGET,"NVIDIA GPU detected: {}", gpu_info.name);
                 return gpu_info;
             }
             GpuDetectionResult::NoGpu => {
-                debug!("No NVIDIA GPU detected");
+                debug!(target: LOG_TARGET,"No NVIDIA GPU detected");
             }
             GpuDetectionResult::DriverMissing(msg) => {
-                debug!("NVIDIA driver issue: {}", msg);
+                debug!(target: LOG_TARGET,"NVIDIA driver issue: {}", msg);
             }
             GpuDetectionResult::CommandFailed(msg) => {
-                debug!("nvidia-smi command failed: {}", msg);
+                debug!(target: LOG_TARGET,"nvidia-smi command failed: {}", msg);
             }
             GpuDetectionResult::ParseError(msg) => {
-                warn!("Failed to parse nvidia-smi output: {}", msg);
+                warn!(target: LOG_TARGET,"Failed to parse nvidia-smi output: {}", msg);
             }
         }
 
         // Try AMD (future implementation)
         match Self::detect_amd() {
             GpuDetectionResult::Success(gpu_info) => {
-                info!("AMD GPU detected: {}", gpu_info.name);
+                info!(target: LOG_TARGET,"AMD GPU detected: {}", gpu_info.name);
                 return gpu_info;
             }
-            _ => debug!("No AMD GPU detected"),
+            _ => debug!(target: LOG_TARGET,"No AMD GPU detected"),
         }
 
         // Try Intel (future implementation)
         match Self::detect_intel() {
             GpuDetectionResult::Success(gpu_info) => {
-                info!("Intel GPU detected: {}", gpu_info.name);
+                info!(target: LOG_TARGET,"Intel GPU detected: {}", gpu_info.name);
                 return gpu_info;
             }
-            _ => debug!("No Intel GPU detected"),
+            _ => debug!(target: LOG_TARGET,"No Intel GPU detected"),
         }
 
         // No GPU found
-        debug!("No compatible GPU detected");
+        debug!(target: LOG_TARGET,"No compatible GPU detected");
         Self::default()
     }
 
@@ -163,7 +165,7 @@ impl GpuInfo {
         {
             Ok(output) => output,
             Err(e) => {
-                debug!("nvidia-smi command not found: {}", e);
+                debug!(target: LOG_TARGET,"nvidia-smi command not found: {}", e);
                 return GpuDetectionResult::DriverMissing(format!("nvidia-smi not available: {}", e));
             }
         };
@@ -174,29 +176,31 @@ impl GpuInfo {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let lines: Vec<&str> = stdout.trim().split('\n').filter(|line| !line.trim().is_empty()).collect();
-        
+        let lines: Vec<&str> = stdout
+            .trim()
+            .split('\n')
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+
         if lines.is_empty() {
             return GpuDetectionResult::NoGpu;
         }
 
         // Parse first GPU (primary GPU for mining)
         match Self::parse_nvidia_smi_line(lines[0]) {
-            Ok(gpu_data) => {
-                GpuDetectionResult::Success(GpuInfo {
-                    detected: true,
-                    name: gpu_data.0,
-                    driver_version: Some(gpu_data.1),
-                    temperature: gpu_data.2,
-                    power_usage: gpu_data.3,
-                    memory_used: gpu_data.4,
-                    memory_total: gpu_data.5,
-                    utilization: gpu_data.6,
-                    count: lines.len(),
-                    vendor: GpuVendor::NVIDIA,
-                    error_message: None,
-                })
-            }
+            Ok(gpu_data) => GpuDetectionResult::Success(GpuInfo {
+                detected: true,
+                name: gpu_data.0,
+                driver_version: Some(gpu_data.1),
+                temperature: gpu_data.2,
+                power_usage: gpu_data.3,
+                memory_used: gpu_data.4,
+                memory_total: gpu_data.5,
+                utilization: gpu_data.6,
+                count: lines.len(),
+                vendor: GpuVendor::NVIDIA,
+                error_message: None,
+            }),
             Err(e) => GpuDetectionResult::ParseError(e),
         }
     }
@@ -217,16 +221,33 @@ impl GpuInfo {
 
     /// Parse a single line of nvidia-smi CSV output
     /// Expected format: "NVIDIA GeForce RTX 4090, 535.104.05, 65, 350.2, 8192, 24576, 85"
-    fn parse_nvidia_smi_line(line: &str) -> Result<(String, String, Option<f32>, Option<f32>, Option<u64>, Option<u64>, Option<f32>), String> {
+    fn parse_nvidia_smi_line(
+        line: &str,
+    ) -> Result<
+        (
+            String,
+            String,
+            Option<f32>,
+            Option<f32>,
+            Option<u64>,
+            Option<u64>,
+            Option<f32>,
+        ),
+        String,
+    > {
         let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-        
+
         if parts.len() < 7 {
-            return Err(format!("Invalid nvidia-smi output format, expected 7 fields but got {}: {}", parts.len(), line));
+            return Err(format!(
+                "Invalid nvidia-smi output format, expected 7 fields but got {}: {}",
+                parts.len(),
+                line
+            ));
         }
 
         let name = parts[0].to_string();
         let driver_version = parts[1].to_string();
-        
+
         // Parse numeric values with comprehensive error handling
         let temperature = Self::parse_optional_float(parts[2], "temperature")?;
         let power_usage = Self::parse_optional_float(parts[3], "power")?;
@@ -234,15 +255,28 @@ impl GpuInfo {
         let memory_total = Self::parse_optional_u64(parts[5], "memory_total")?;
         let utilization = Self::parse_optional_float(parts[6], "utilization")?;
 
-        Ok((name, driver_version, temperature, power_usage, memory_used, memory_total, utilization))
+        Ok((
+            name,
+            driver_version,
+            temperature,
+            power_usage,
+            memory_used,
+            memory_total,
+            utilization,
+        ))
     }
 
     /// Parse optional float value with field name for better error messages
     fn parse_optional_float(value: &str, field_name: &str) -> Result<Option<f32>, String> {
-        if value == "N/A" || value == "[Not Supported]" || value.is_empty() || value == "[Unknown Error]" {
+        if value == "N/A"
+            || value == "[Not Supported]"
+            || value.is_empty()
+            || value == "[Unknown Error]"
+        {
             Ok(None)
         } else {
-            value.parse::<f32>()
+            value
+                .parse::<f32>()
                 .map(Some)
                 .map_err(|e| format!("Failed to parse {} '{}': {}", field_name, value, e))
         }
@@ -250,10 +284,15 @@ impl GpuInfo {
 
     /// Parse optional u64 value with field name for better error messages
     fn parse_optional_u64(value: &str, field_name: &str) -> Result<Option<u64>, String> {
-        if value == "N/A" || value == "[Not Supported]" || value.is_empty() || value == "[Unknown Error]" {
+        if value == "N/A"
+            || value == "[Not Supported]"
+            || value.is_empty()
+            || value == "[Unknown Error]"
+        {
             Ok(None)
         } else {
-            value.parse::<u64>()
+            value
+                .parse::<u64>()
                 .map(Some)
                 .map_err(|e| format!("Failed to parse {} '{}': {}", field_name, value, e))
         }
@@ -263,9 +302,13 @@ impl GpuInfo {
     pub fn format_memory(&self) -> String {
         match (self.memory_used, self.memory_total) {
             (Some(used), Some(total)) => {
-                format!("{:.1} / {:.1} GB", used as f32 / 1024.0, total as f32 / 1024.0)
+                format!(
+                    "{:.1} / {:.1} GB",
+                    used as f32 / 1024.0,
+                    total as f32 / 1024.0
+                )
             }
-            _ => "-- / -- GB".to_string()
+            _ => "-- / -- GB".to_string(),
         }
     }
 
@@ -275,7 +318,7 @@ impl GpuInfo {
             (Some(used), Some(total)) if total > 0 => {
                 format!("{:.1}%", (used as f32 / total as f32) * 100.0)
             }
-            _ => "-- %".to_string()
+            _ => "-- %".to_string(),
         }
     }
 
@@ -283,7 +326,7 @@ impl GpuInfo {
     pub fn format_temperature(&self) -> String {
         match self.temperature {
             Some(temp) => format!("{:.0}°C", temp),
-            None => "--°C".to_string()
+            None => "--°C".to_string(),
         }
     }
 
@@ -291,7 +334,7 @@ impl GpuInfo {
     pub fn format_power(&self) -> String {
         match self.power_usage {
             Some(power) => format!("{:.0} W", power),
-            None => "-- W".to_string()
+            None => "-- W".to_string(),
         }
     }
 
@@ -299,7 +342,7 @@ impl GpuInfo {
     pub fn format_utilization(&self) -> String {
         match self.utilization {
             Some(util) => format!("{:.0}%", util),
-            None => "--".to_string()
+            None => "--".to_string(),
         }
     }
 
@@ -323,15 +366,15 @@ impl GpuInfo {
         }
 
         let mut status_parts = vec![self.name.clone()];
-        
+
         if let Some(util) = self.utilization {
             status_parts.push(format!("{}% load", util as u8));
         }
-        
+
         if let Some(temp) = self.temperature {
             status_parts.push(format!("{}°C", temp as u8));
         }
-        
+
         if let Some(power) = self.power_usage {
             status_parts.push(format!("{}W", power as u16));
         }
@@ -350,7 +393,7 @@ impl GpuInfo {
                     _ => "🟢 Low".to_string(),
                 }
             }
-            _ => "❓ Unknown".to_string()
+            _ => "❓ Unknown".to_string(),
         }
     }
 
@@ -358,21 +401,19 @@ impl GpuInfo {
     pub fn is_temperature_safe(&self) -> bool {
         match self.temperature {
             Some(temp) => temp < 85.0, // Consider 85°C as safe threshold
-            None => true, // Unknown temperature assumed safe
+            None => true,              // Unknown temperature assumed safe
         }
     }
 
     /// Get thermal status indicator
     pub fn get_thermal_status(&self) -> String {
         match self.temperature {
-            Some(temp) => {
-                match temp {
-                    t if t >= 90.0 => "🔥 Hot".to_string(),
-                    t if t >= 80.0 => "🟡 Warm".to_string(),
-                    _ => "❄️ Cool".to_string(),
-                }
-            }
-            None => "❓ Unknown".to_string()
+            Some(temp) => match temp {
+                t if t >= 90.0 => "🔥 Hot".to_string(),
+                t if t >= 80.0 => "🟡 Warm".to_string(),
+                _ => "❄️ Cool".to_string(),
+            },
+            None => "❓ Unknown".to_string(),
         }
     }
 }
@@ -410,9 +451,9 @@ impl GpuMonitor {
         let mut gpu_info = self.gpu_info.lock().unwrap();
         gpu_info.refresh();
         *self.last_update.lock().unwrap() = Instant::now();
-        
+
         if gpu_info.is_available() {
-            debug!("GPU monitor updated: {}", gpu_info.get_status_string());
+            debug!(target: LOG_TARGET,"GPU monitor updated: {}", gpu_info.get_status_string());
         }
     }
 
@@ -433,10 +474,10 @@ mod tests {
     fn test_parse_nvidia_smi_line_valid() {
         let test_line = "NVIDIA GeForce RTX 4090, 535.104.05, 65, 350.2, 8192, 24576, 85";
         let result = GpuInfo::parse_nvidia_smi_line(test_line);
-        
+
         assert!(result.is_ok());
         let (name, driver, temp, power, mem_used, mem_total, util) = result.unwrap();
-        
+
         assert_eq!(name, "NVIDIA GeForce RTX 4090");
         assert_eq!(driver, "535.104.05");
         assert_eq!(temp, Some(65.0));
@@ -450,10 +491,10 @@ mod tests {
     fn test_parse_nvidia_smi_line_with_na_values() {
         let test_line = "NVIDIA GeForce GTX 1060, 470.161.03, N/A, [Not Supported], 2048, 6144, 45";
         let result = GpuInfo::parse_nvidia_smi_line(test_line);
-        
+
         assert!(result.is_ok());
         let (name, driver, temp, power, mem_used, mem_total, util) = result.unwrap();
-        
+
         assert_eq!(name, "NVIDIA GeForce GTX 1060");
         assert_eq!(driver, "470.161.03");
         assert_eq!(temp, None);
@@ -467,7 +508,7 @@ mod tests {
     fn test_parse_nvidia_smi_line_invalid_format() {
         let test_line = "NVIDIA GeForce RTX 4090, 535.104.05"; // Too few fields
         let result = GpuInfo::parse_nvidia_smi_line(test_line);
-        
+
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("expected 7 fields"));
     }
@@ -534,7 +575,7 @@ mod tests {
     fn test_gpu_monitor() {
         let monitor = GpuMonitor::new_default();
         let info = monitor.get_info();
-        
+
         // Should have some default values
         assert!(info.vendor == GpuVendor::Unknown || info.vendor == GpuVendor::NVIDIA);
     }

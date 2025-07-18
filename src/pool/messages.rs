@@ -16,8 +16,10 @@
 
 use crate::core::types::Algorithm;
 use hex;
+use log::warn;
 use uint::construct_uint;
-use tracing::{warn};
+
+const LOG_TARGET: &str = "tari::graxil::pool::messages";
 
 construct_uint! {
     pub struct U256(4);
@@ -25,63 +27,69 @@ construct_uint! {
 
 /// Bitcoin's maximum target (difficulty 1)
 const MAX_TARGET: [u8; 32] = [
-    0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
 /// Parse target difficulty from a hex-encoded string provided by the pool
 pub fn parse_target_difficulty(target_hex: &str, algo: Algorithm) -> u64 {
     match algo {
-        Algorithm::Sha3x => {
-            match hex::decode(target_hex) {
-                Ok(target_bytes) => {
-                    if target_bytes.len() >= 8 {
-                        let target_u64 = u64::from_le_bytes([
-                            target_bytes[0], target_bytes[1], target_bytes[2], target_bytes[3],
-                            target_bytes[4], target_bytes[5], target_bytes[6], target_bytes[7],
-                        ]);
-                        if target_u64 > 0 {
-                            0xFFFFFFFFFFFFFFFFu64 / target_u64
-                        } else {
-                            warn!("Invalid SHA3x target: zero value");
-                            1
-                        }
+        Algorithm::Sha3x => match hex::decode(target_hex) {
+            Ok(target_bytes) => {
+                if target_bytes.len() >= 8 {
+                    let target_u64 = u64::from_le_bytes([
+                        target_bytes[0],
+                        target_bytes[1],
+                        target_bytes[2],
+                        target_bytes[3],
+                        target_bytes[4],
+                        target_bytes[5],
+                        target_bytes[6],
+                        target_bytes[7],
+                    ]);
+                    if target_u64 > 0 {
+                        0xFFFFFFFFFFFFFFFFu64 / target_u64
                     } else {
-                        warn!("Invalid SHA3x target: too short ({} bytes)", target_bytes.len());
+                        warn!(target: LOG_TARGET,"Invalid SHA3x target: zero value");
                         1
                     }
-                }
-                Err(e) => {
-                    warn!("Failed to decode SHA3x target hex: {}", e);
+                } else {
+                    warn!(target: LOG_TARGET,
+                        "Invalid SHA3x target: too short ({} bytes)",
+                        target_bytes.len()
+                    );
                     1
                 }
             }
-        }
-        Algorithm::Sha256 => {
-            match hex::decode(target_hex) {
-                Ok(target_bytes) => {
-                    if target_bytes.len() == 32 {
-                        let target = U256::from_big_endian(&target_bytes);
-                        if target.is_zero() {
-                            warn!("Invalid SHA-256 target: zero value");
-                            1
-                        } else {
-                            let max_target = U256::from_big_endian(&MAX_TARGET);
-                            (max_target / target).low_u64()
-                        }
-                    } else {
-                        warn!("Invalid SHA-256 target: wrong length ({} bytes)", target_bytes.len());
+            Err(e) => {
+                warn!(target: LOG_TARGET,"Failed to decode SHA3x target hex: {}", e);
+                1
+            }
+        },
+        Algorithm::Sha256 => match hex::decode(target_hex) {
+            Ok(target_bytes) => {
+                if target_bytes.len() == 32 {
+                    let target = U256::from_big_endian(&target_bytes);
+                    if target.is_zero() {
+                        warn!(target: LOG_TARGET,"Invalid SHA-256 target: zero value");
                         1
+                    } else {
+                        let max_target = U256::from_big_endian(&MAX_TARGET);
+                        (max_target / target).low_u64()
                     }
-                }
-                Err(e) => {
-                    warn!("Failed to decode SHA-256 target hex: {}", e);
+                } else {
+                    warn!(target: LOG_TARGET,
+                        "Invalid SHA-256 target: wrong length ({} bytes)",
+                        target_bytes.len()
+                    );
                     1
                 }
             }
-        }
+            Err(e) => {
+                warn!(target: LOG_TARGET,"Failed to decode SHA-256 target hex: {}", e);
+                1
+            }
+        },
     }
 }
 
@@ -90,15 +98,14 @@ pub fn calculate_difficulty(hash: &[u8], algo: Algorithm) -> u64 {
     match algo {
         Algorithm::Sha3x => {
             if hash.len() < 8 {
-                warn!("Invalid SHA3x hash: too short ({} bytes)", hash.len());
+                warn!(target: LOG_TARGET,"Invalid SHA3x hash: too short ({} bytes)", hash.len());
                 return 0;
             }
             let hash_u64 = u64::from_be_bytes([
-                hash[0], hash[1], hash[2], hash[3],
-                hash[4], hash[5], hash[6], hash[7],
+                hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
             ]);
             if hash_u64 == 0 {
-                warn!("Invalid SHA3x hash: zero value");
+                warn!(target: LOG_TARGET,"Invalid SHA3x hash: zero value");
                 u64::MAX
             } else {
                 0xFFFFFFFFFFFFFFFFu64 / hash_u64
@@ -106,12 +113,12 @@ pub fn calculate_difficulty(hash: &[u8], algo: Algorithm) -> u64 {
         }
         Algorithm::Sha256 => {
             if hash.len() != 32 {
-                warn!("Invalid SHA-256 hash: wrong length ({} bytes)", hash.len());
+                warn!(target: LOG_TARGET,"Invalid SHA-256 hash: wrong length ({} bytes)", hash.len());
                 return 0;
             }
             let hash_value = U256::from_big_endian(hash);
             if hash_value.is_zero() {
-                warn!("Invalid SHA-256 hash: zero value");
+                warn!(target: LOG_TARGET,"Invalid SHA-256 hash: zero value");
                 u64::MAX
             } else {
                 let max_target = U256::from_big_endian(&MAX_TARGET);
@@ -124,27 +131,35 @@ pub fn calculate_difficulty(hash: &[u8], algo: Algorithm) -> u64 {
 /// Convert Bitcoin network difficulty to target value
 pub fn difficulty_to_target(difficulty: f64) -> u64 {
     if difficulty <= 0.0 {
-        warn!("Invalid Bitcoin difficulty: {}", difficulty);
+        warn!(target: LOG_TARGET,"Invalid Bitcoin difficulty: {}", difficulty);
         return u64::MAX;
     }
     let max_target = U256::from_big_endian(&MAX_TARGET);
     let target_u256 = max_target / U256::from(difficulty as u64);
     let target_bytes = target_u256.to_big_endian();
     u64::from_be_bytes([
-        target_bytes[0], target_bytes[1], target_bytes[2], target_bytes[3],
-        target_bytes[4], target_bytes[5], target_bytes[6], target_bytes[7]
+        target_bytes[0],
+        target_bytes[1],
+        target_bytes[2],
+        target_bytes[3],
+        target_bytes[4],
+        target_bytes[5],
+        target_bytes[6],
+        target_bytes[7],
     ])
 }
 
 /// Check if a hash meets the target difficulty for Bitcoin
 pub fn hash_meets_target(hash: &[u8], target: u64) -> bool {
     if hash.len() < 8 {
-        warn!("Invalid hash for target check: too short ({} bytes)", hash.len());
+        warn!(target: LOG_TARGET,
+            "Invalid hash for target check: too short ({} bytes)",
+            hash.len()
+        );
         return false;
     }
     let hash_value = u64::from_be_bytes([
-        hash[0], hash[1], hash[2], hash[3],
-        hash[4], hash[5], hash[6], hash[7]
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
     ]);
     hash_value <= target
 }
@@ -166,20 +181,22 @@ mod tests {
 
     #[test]
     fn test_sha3x_difficulty_calculation() {
-        let hash = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let hash = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
         let difficulty = calculate_difficulty(&hash, Algorithm::Sha3x);
         assert_eq!(difficulty, 0xFFFFFFFFFFFFFFFFu64 / 1);
     }
 
     #[test]
     fn test_sha256_difficulty_calculation() {
-        let hash = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let hash = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
         let difficulty = calculate_difficulty(&hash, Algorithm::Sha256);
         assert!(difficulty > 0);
     }
@@ -193,10 +210,11 @@ mod tests {
 
     #[test]
     fn test_sha256_hash_meets_target() {
-        let hash = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let hash = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
         let target = 0x0000000000000002u64;
         assert!(hash_meets_target(&hash, target));
         let hard_target = 0x0000000000000000u64;

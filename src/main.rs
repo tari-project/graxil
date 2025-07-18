@@ -7,34 +7,45 @@
 // MULTI-GPU DUAL-INDEPENDENT MINERS: Complete hybrid mode with resilient miners
 // Feature-based mining with proper thread coordination: --features cpu, --features gpu, --features hybrid
 
-use sha3x_miner::{
-    core::types::{Args, Algorithm}, 
-    miner::CpuMiner, 
-    benchmark::runner::BenchmarkRunner, 
-    Result
-};
 use clap::Parser;
-use tracing::{info, error};
-use tracing_subscriber;
+use log::info;
+use sha3x_miner::{
+    Result,
+    benchmark::runner::BenchmarkRunner,
+    core::types::{Algorithm, Args},
+    miner::CpuMiner,
+};
 use std::sync::Arc;
 
 // Web server module for real-time mining dashboard
 mod web_server;
 
+const LOG_TARGET: &str = "tari::graxil";
+
 // Ensure exactly one mining mode is selected
 #[cfg(not(any(feature = "cpu", feature = "gpu", feature = "hybrid")))]
-compile_error!("Must specify one feature: --features cpu, --features gpu, or --features hybrid");
+compile_error!(target: LOG_TARGET,"Must specify one feature: --features cpu, --features gpu, or --features hybrid");
 
 // Prevent conflicting standalone features when hybrid is not used
 #[cfg(all(feature = "cpu", feature = "gpu", not(feature = "hybrid")))]
-compile_error!("Cannot use both --features cpu and --features gpu. Use --features hybrid for both.");
+compile_error!(target: LOG_TARGET,
+    "Cannot use both --features cpu and --features gpu. Use --features hybrid for both."
+);
 
 // Prevent using hybrid with standalone features
-#[cfg(all(feature = "hybrid", any(all(feature = "cpu", not(feature = "gpu")), all(feature = "gpu", not(feature = "cpu")))))]
-compile_error!("When using --features hybrid, do not specify cpu or gpu separately. Use only --features hybrid.");
+#[cfg(all(
+    feature = "hybrid",
+    any(
+        all(feature = "cpu", not(feature = "gpu")),
+        all(feature = "gpu", not(feature = "cpu"))
+    )
+))]
+compile_error!(target: LOG_TARGET,
+    "When using --features hybrid, do not specify cpu or gpu separately. Use only --features hybrid."
+);
 
 //
-// CPU-ONLY MINING MODE  
+// CPU-ONLY MINING MODE
 //
 #[cfg(all(feature = "cpu", not(feature = "hybrid")))]
 #[tokio::main]
@@ -51,10 +62,6 @@ async fn main() -> Result<()> {
         eprintln!("❌ Error: {}", err);
         std::process::exit(1);
     }
-
-    // Initialize tracing only if TUI is disabled
-    #[cfg(not(feature = "tui"))]
-    tracing_subscriber::fmt::init();
 
     let algo = parse_algorithm(&args.algo)?;
 
@@ -73,6 +80,15 @@ async fn main() -> Result<()> {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    if let Some(ref log_dir) = args.log_dir {
+        tari_common::initialize_logging(
+            &log_dir.join("graxil").join("log4rs_config.yml"),
+            &log_dir.join("graxil"),
+            include_str!("../log4rs_sample.yml"),
+        )
+        .expect("Could not set up logging");
+    }
+
     // Check for SV2 test mode first
     if args.test_sv2 {
         return handle_sv2_test(&args).await;
@@ -83,10 +99,6 @@ async fn main() -> Result<()> {
         eprintln!("❌ Error: {}", err);
         std::process::exit(1);
     }
-
-    // Initialize tracing only if TUI is disabled
-    #[cfg(not(feature = "tui"))]
-    tracing_subscriber::fmt::init();
 
     let algo = parse_algorithm(&args.algo)?;
 
@@ -116,10 +128,6 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    // Initialize tracing only if TUI is disabled
-    #[cfg(not(feature = "tui"))]
-    tracing_subscriber::fmt::init();
-
     let algo = parse_algorithm(&args.algo)?;
 
     if args.benchmark {
@@ -134,39 +142,37 @@ async fn main() -> Result<()> {
 //
 
 async fn handle_sv2_test(args: &Args) -> Result<()> {
-    // Initialize tracing for SV2 test
-    #[cfg(not(feature = "tui"))]
-    tracing_subscriber::fmt::init();
+    info!(target: LOG_TARGET,"🔧 SV2 Connection Test Mode");
 
-    info!("🔧 SV2 Connection Test Mode");
-    
     // Validate required arguments for SV2 test
     let pool_address = match &args.pool {
         Some(pool) => pool,
         None => {
             eprintln!("❌ Error: --pool is required for SV2 testing");
-            eprintln!("Example: cargo run --release --features cpu -- --test-sv2 --pool 127.0.0.1:34254");
+            eprintln!(
+                "Example: cargo run --release --features cpu -- --test-sv2 --pool 127.0.0.1:34254"
+            );
             std::process::exit(1);
         }
     };
 
-    info!("🎯 Target JDS: {}", pool_address);
+    info!(target: LOG_TARGET,"🎯 Target JDS: {}", pool_address);
 
     // Create a test miner instance - pass pool address as string
     let miner = CpuMiner::new(
         "test-wallet".to_string(), // Dummy wallet for SV2 test
-        pool_address.clone(), // Pass as string, miner will resolve DNS
+        pool_address.clone(),      // Pass as string, miner will resolve DNS
         "sv2-test-worker".to_string(),
-        1, // Single thread for test
+        1,                // Single thread for test
         Algorithm::Sha3x, // Algorithm doesn't matter for connection test
     );
 
     // Run SV2 connection test
     match miner.test_sv2_connection().await {
         Ok(()) => {
-            info!("✅ TCP connection to JDS successful");
-            info!("❌ Noise protocol not implemented yet");
-            info!("🔧 Next: Implement noise_sv2 handshake with step_0/step_2");
+            info!(target: LOG_TARGET,"✅ TCP connection to JDS successful");
+            info!(target: LOG_TARGET,"❌ Noise protocol not implemented yet");
+            info!(target: LOG_TARGET,"🔧 Next: Implement noise_sv2 handshake with step_0/step_2");
             std::process::exit(0);
         }
         Err(e) => {
@@ -191,10 +197,17 @@ fn parse_algorithm(algo_str: &str) -> Result<Algorithm> {
 }
 
 async fn handle_benchmark(args: &Args, algo: Algorithm) -> Result<()> {
-    info!("🧪 Starting Benchmark Mode (Algo: {:?})", algo);
-    info!("🧵 Threads: {}", if args.threads == 0 { "auto".to_string() } else { args.threads.to_string() });
-    info!("⏱️ Duration: {}s", args.benchmark_duration);
-    info!("🎯 Target difficulty: {:.10}", args.benchmark_difficulty);
+    info!(target: LOG_TARGET,"🧪 Starting Benchmark Mode (Algo: {:?})", algo);
+    info!(target: LOG_TARGET,
+        "🧵 Threads: {}",
+        if args.threads == 0 {
+            "auto".to_string()
+        } else {
+            args.threads.to_string()
+        }
+    );
+    info!(target: LOG_TARGET,"⏱️ Duration: {}s", args.benchmark_duration);
+    info!(target: LOG_TARGET,"🎯 Target difficulty: {:.10}", args.benchmark_difficulty);
 
     let benchmark_runner = BenchmarkRunner::new(
         args.threads,
@@ -204,17 +217,23 @@ async fn handle_benchmark(args: &Args, algo: Algorithm) -> Result<()> {
     );
 
     let result = benchmark_runner.run().await?;
-    
-    info!("📊 Benchmark Complete!");
-    info!("🧪 Algorithm: {:?}", algo);
-    info!("🎯 Difficulty tested: {:.10}", args.benchmark_difficulty);
-    info!("⏱️ Duration: {:.2}s", result.duration.as_secs_f64());
-    info!("⚡ Average hashrate: {}", result.format_hashrate());
-    info!("🔥 Peak hashrate: {:.2} MH/s", result.peak_hashrate / 1_000_000.0);
-    info!("📈 Total hashes: {}", result.total_hashes);
-    info!("💎 Shares found: {}", result.shares_found);
-    info!("📊 Shares/MH: {:.2}", result.shares_found as f64 / (result.total_hashes as f64 / 1_000_000.0));
-    info!("🧵 Threads used: {}", result.thread_count);
+
+    info!(target: LOG_TARGET,"📊 Benchmark Complete!");
+    info!(target: LOG_TARGET,"🧪 Algorithm: {:?}", algo);
+    info!(target: LOG_TARGET,"🎯 Difficulty tested: {:.10}", args.benchmark_difficulty);
+    info!(target: LOG_TARGET,"⏱️ Duration: {:.2}s", result.duration.as_secs_f64());
+    info!(target: LOG_TARGET,"⚡ Average hashrate: {}", result.format_hashrate());
+    info!(target: LOG_TARGET,
+        "🔥 Peak hashrate: {:.2} MH/s",
+        result.peak_hashrate / 1_000_000.0
+    );
+    info!(target: LOG_TARGET,"📈 Total hashes: {}", result.total_hashes);
+    info!(target: LOG_TARGET,"💎 Shares found: {}", result.shares_found);
+    info!(target: LOG_TARGET,
+        "📊 Shares/MH: {:.2}",
+        result.shares_found as f64 / (result.total_hashes as f64 / 1_000_000.0)
+    );
+    info!(target: LOG_TARGET,"🧵 Threads used: {}", result.thread_count);
 
     Ok(())
 }
@@ -231,12 +250,19 @@ async fn handle_cpu_mining(args: &Args, algo: Algorithm) -> Result<()> {
         std::process::exit(1);
     }
 
-    info!("🚀 Starting SHA3x Miner - CPU-ONLY Mode");
-    info!("📍 Pool: {}", args.pool.as_ref().unwrap());
-    info!("💳 Wallet: {}", args.wallet.as_ref().unwrap());
-    info!("👷 Worker: {}", args.worker);
-    info!("🧵 CPU Threads: {}", if args.threads == 0 { "auto".to_string() } else { args.threads.to_string() });
-    info!("💻 Mode: CPU-only mining (compile with --features gpu for 300+ MH/s boost!)");
+    info!(target: LOG_TARGET,"🚀 Starting SHA3x Miner - CPU-ONLY Mode");
+    info!(target: LOG_TARGET,"📍 Pool: {}", args.pool.as_ref().unwrap());
+    info!(target: LOG_TARGET,"💳 Wallet: {}", args.wallet.as_ref().unwrap());
+    info!(target: LOG_TARGET,"👷 Worker: {}", args.worker);
+    info!(target: LOG_TARGET,
+        "🧵 CPU Threads: {}",
+        if args.threads == 0 {
+            "auto".to_string()
+        } else {
+            args.threads.to_string()
+        }
+    );
+    info!(target: LOG_TARGET,"💻 Mode: CPU-only mining (compile with --features gpu for 300+ MH/s boost!)");
 
     // Create and run your existing CPU miner
     let miner = CpuMiner::new(
@@ -245,26 +271,27 @@ async fn handle_cpu_mining(args: &Args, algo: Algorithm) -> Result<()> {
         args.worker.clone(),
         args.threads,
         algo,
-    ).into_arc();
+    )
+    .into_arc();
 
     // Start web server in background if --web flag is enabled
     if args.web {
         let miner_clone = miner.clone();
         tokio::spawn(async move {
             let stats = miner_clone.get_stats();
-            info!("🌐 Starting web dashboard server...");
+            info!(target: LOG_TARGET,"🌐 Starting web dashboard server...");
             web_server::start_web_server(stats).await;
         });
 
-        info!("📊 Real-time dashboard available at: http://localhost:8080");
-        info!("📈 Live charts accessible via the 'Live Charts' tab");
-        info!("🔗 WebSocket endpoint: ws://localhost:8080/ws");
+        info!(target: LOG_TARGET,"📊 Real-time dashboard available at: http://localhost:8080");
+        info!(target: LOG_TARGET,"📈 Live charts accessible via the 'Live Charts' tab");
+        info!(target: LOG_TARGET,"🔗 WebSocket endpoint: ws://localhost:8080/ws");
     } else {
-        info!("💡 Add --web flag to enable real-time web dashboard");
+        info!(target: LOG_TARGET,"💡 Add --web flag to enable real-time web dashboard");
     }
 
     // Start CPU mining
-    info!("🚀 Starting CPU mining");
+    info!(target: LOG_TARGET,"🚀 Starting CPU mining");
     miner.run().await?;
 
     Ok(())
@@ -282,20 +309,26 @@ async fn handle_gpu_mining(args: &Args, algo: Algorithm) -> Result<()> {
         std::process::exit(1);
     }
 
-    info!("🚀 Starting SHA3x Miner - GPU-ONLY Mode");
-    info!("📍 Pool: {}", args.pool.as_ref().unwrap());
-    info!("💳 Wallet: {}", args.wallet.as_ref().unwrap());
-    info!("👷 Worker: {}", args.worker);
-    info!("🎮 Mode: GPU-only mining (385+ MH/s beast mode!)");
+    info!(target: LOG_TARGET,"🚀 Starting SHA3x Miner - GPU-ONLY Mode");
+    info!(target: LOG_TARGET,"📍 Pool: {}", args.pool.as_ref().unwrap());
+    info!(target: LOG_TARGET,"💳 Wallet: {}", args.wallet.as_ref().unwrap());
+    info!(target: LOG_TARGET,"👷 Worker: {}", args.worker);
+    info!(target: LOG_TARGET,"🎮 Mode: GPU-only mining (385+ MH/s beast mode!)");
 
     // *** CRITICAL FIX: Get GPU settings from CLI args and pass them properly ***
     let gpu_settings = args.get_gpu_settings();
-    info!("🎮 GPU Settings - Intensity: {}%, Batch: {:?}, Power: {:?}%, Temp: {:?}°C", 
-          gpu_settings.intensity, gpu_settings.batch_size, gpu_settings.power_limit, gpu_settings.temp_limit);
+    info!(target: LOG_TARGET,
+        "🎮 GPU Settings - Intensity: {}%, Batch: {:?}, Power: {:?}%, Temp: {:?}°C",
+        gpu_settings.intensity,
+        gpu_settings.batch_size,
+        gpu_settings.power_limit,
+        gpu_settings.temp_limit
+    );
 
+    use log::info;
     // Create GPU manager with settings applied
     use sha3x_miner::miner::gpu::{GpuManager, GpuMiner};
-    
+
     let gpu_manager = GpuManager::new_with_settings(gpu_settings.clone());
 
     // *** CRITICAL FIX: Use new_with_settings instead of new() ***
@@ -311,35 +344,42 @@ async fn handle_gpu_mining(args: &Args, algo: Algorithm) -> Result<()> {
         Err(e) => {
             eprintln!("❌ Failed to create GPU miner: {}", e);
             eprintln!("💡 Make sure you have OpenCL drivers installed");
-            eprintln!("💡 GPU Settings attempted: intensity={}%, batch={:?}", 
-                      args.gpu_intensity, args.gpu_batch_size);
+            eprintln!(
+                "💡 GPU Settings attempted: intensity={}%, batch={:?}",
+                args.gpu_intensity, args.gpu_batch_size
+            );
             std::process::exit(1);
         }
     };
 
     // Verify settings were applied correctly
     let applied_settings = gpu_miner.get_gpu_settings();
-    info!("✅ GPU Settings Applied: intensity={}%, batch={:?}", 
-          applied_settings.intensity, applied_settings.batch_size);
+    info!(target: LOG_TARGET,
+        "✅ GPU Settings Applied: intensity={}%, batch={:?}",
+        applied_settings.intensity, applied_settings.batch_size
+    );
 
     // Start web server in background if --web flag is enabled
     if args.web {
         let miner_clone = gpu_miner.clone();
         tokio::spawn(async move {
             let stats = miner_clone.get_stats();
-            info!("🌐 Starting GPU web dashboard server...");
+            info!(target: LOG_TARGET,"🌐 Starting GPU web dashboard server...");
             web_server::start_web_server(stats).await;
         });
 
-        info!("📊 Real-time GPU dashboard available at: http://localhost:8080");
-        info!("📈 Live GPU charts accessible via the 'Live Charts' tab");
-        info!("🔗 WebSocket endpoint: ws://localhost:8080/ws");
+        info!(target: LOG_TARGET,"📊 Real-time GPU dashboard available at: http://localhost:8080");
+        info!(target: LOG_TARGET,"📈 Live GPU charts accessible via the 'Live Charts' tab");
+        info!(target: LOG_TARGET,"🔗 WebSocket endpoint: ws://localhost:8080/ws");
     } else {
-        info!("💡 Add --web flag to enable real-time web dashboard");
+        info!(target: LOG_TARGET,"💡 Add --web flag to enable real-time web dashboard");
     }
 
     // Start GPU mining - 385+ MH/s beast mode with correct settings!
-    info!("🚀 Starting GPU mining with {}% intensity - unleashing the beast!", applied_settings.intensity);
+    info!(target: LOG_TARGET,
+        "🚀 Starting GPU mining with {}% intensity - unleashing the beast!",
+        applied_settings.intensity
+    );
     gpu_miner.run().await?;
 
     Ok(())
@@ -357,79 +397,105 @@ async fn handle_hybrid_mining(args: &Args, algo: Algorithm) -> Result<()> {
         std::process::exit(1);
     }
 
-    info!("🚀 Starting SHA3x Miner - MULTI-GPU HYBRID Mode");
-    info!("📍 Pool: {}", args.pool.as_ref().unwrap());
-    info!("💳 Wallet: {}", args.wallet.as_ref().unwrap());
-    info!("👷 Worker: {}", args.worker);
-    info!("🧵 CPU Threads: {}", if args.threads == 0 { "auto".to_string() } else { args.threads.to_string() });
-    info!("🎮 Mode: Multi-GPU hybrid CPU+GPU mining (400+ MH/s total beast mode!)");
+    info!(target: LOG_TARGET,"🚀 Starting SHA3x Miner - MULTI-GPU HYBRID Mode");
+    info!(target: LOG_TARGET,"📍 Pool: {}", args.pool.as_ref().unwrap());
+    info!(target: LOG_TARGET,"💳 Wallet: {}", args.wallet.as_ref().unwrap());
+    info!(target: LOG_TARGET,"👷 Worker: {}", args.worker);
+    info!(target: LOG_TARGET,
+        "🧵 CPU Threads: {}",
+        if args.threads == 0 {
+            "auto".to_string()
+        } else {
+            args.threads.to_string()
+        }
+    );
+    info!(target: LOG_TARGET,"🎮 Mode: Multi-GPU hybrid CPU+GPU mining (400+ MH/s total beast mode!)");
 
     // Get GPU settings from CLI args
     let gpu_settings = args.get_gpu_settings();
-    info!("🎮 GPU Settings - Intensity: {}%, Batch: {:?}, Power: {:?}%, Temp: {:?}°C", 
-          gpu_settings.intensity, gpu_settings.batch_size, gpu_settings.power_limit, gpu_settings.temp_limit);
+    info!(target: LOG_TARGET,
+        "🎮 GPU Settings - Intensity: {}%, Batch: {:?}, Power: {:?}%, Temp: {:?}°C",
+        gpu_settings.intensity,
+        gpu_settings.batch_size,
+        gpu_settings.power_limit,
+        gpu_settings.temp_limit
+    );
 
     // Check GPU availability and get device count
     use sha3x_miner::miner::gpu::GpuManager;
     if !GpuManager::is_available() {
-        error!("❌ No suitable GPU found for hybrid mining!");
-        error!("💡 Falling back to CPU-only mode...");
+        error!(target: LOG_TARGET,"❌ No suitable GPU found for hybrid mining!");
+        error!(target: LOG_TARGET,"💡 Falling back to CPU-only mode...");
         return handle_cpu_fallback(args, algo).await;
     }
 
     // Initialize GPU manager to get actual device count
     let mut gpu_manager = GpuManager::new_with_settings(gpu_settings.clone());
     if let Err(e) = gpu_manager.initialize() {
-        error!("❌ Failed to initialize GPU manager: {}", e);
-        error!("💡 Falling back to CPU-only mode...");
+        error!(target: LOG_TARGET,"❌ Failed to initialize GPU manager: {}", e);
+        error!(target: LOG_TARGET,"💡 Falling back to CPU-only mode...");
         return handle_cpu_fallback(args, algo).await;
     }
 
     // *** CRITICAL: Get actual GPU device count for thread coordination ***
     let gpu_count = gpu_manager.device_count();
     let cpu_thread_count = if args.threads == 0 {
-        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4)
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
     } else {
         args.threads
     };
 
     // *** MULTI-GPU THREAD COORDINATION ***
-    info!("🧵 Multi-GPU Thread Coordination:");
+    info!(target: LOG_TARGET,"🧵 Multi-GPU Thread Coordination:");
     if gpu_count == 1 {
-        info!("├─ GPU Device: 1 (thread ID: 0)");
+        info!(target: LOG_TARGET,"├─ GPU Device: 1 (thread ID: 0)");
     } else {
-        info!("├─ GPU Devices: {} (thread IDs: 0-{})", gpu_count, gpu_count - 1);
+        info!(target: LOG_TARGET,
+            "├─ GPU Devices: {} (thread IDs: 0-{})",
+            gpu_count,
+            gpu_count - 1
+        );
     }
-    info!("├─ CPU Threads: {} (thread IDs: {}-{})", cpu_thread_count, gpu_count, gpu_count + cpu_thread_count - 1);
-    info!("└─ Total Threads: {}", gpu_count + cpu_thread_count);
+    info!(target: LOG_TARGET,
+        "├─ CPU Threads: {} (thread IDs: {}-{})",
+        cpu_thread_count,
+        gpu_count,
+        gpu_count + cpu_thread_count - 1
+    );
+    info!(target: LOG_TARGET,"└─ Total Threads: {}", gpu_count + cpu_thread_count);
 
     // *** CREATE UNIFIED STATS FOR ALL THREADS ***
     use sha3x_miner::miner::stats::MinerStats;
-    
+
     let total_threads = gpu_count + cpu_thread_count; // Dynamic based on actual GPU count
     let mut unified_stats = MinerStats::new(total_threads);
     unified_stats.set_algorithm(algo);
     let unified_stats = Arc::new(unified_stats);
 
-    info!("📊 Created unified stats for {} total threads", total_threads);
+    info!(target: LOG_TARGET,
+        "📊 Created unified stats for {} total threads",
+        total_threads
+    );
 
     // Start web server ONCE for unified dashboard
     if args.web {
         let stats_clone = Arc::clone(&unified_stats);
         tokio::spawn(async move {
-            info!("🌐 Starting unified multi-GPU hybrid web dashboard server...");
+            info!(target: LOG_TARGET,"🌐 Starting unified multi-GPU hybrid web dashboard server...");
             web_server::start_web_server(stats_clone).await;
         });
 
-        info!("📊 Real-time MULTI-GPU HYBRID dashboard available at: http://localhost:8080");
-        info!("📈 Combined CPU+GPU charts accessible via the 'Live Charts' tab");
-        info!("🔗 WebSocket endpoint: ws://localhost:8080/ws");
+        info!(target: LOG_TARGET,"📊 Real-time MULTI-GPU HYBRID dashboard available at: http://localhost:8080");
+        info!(target: LOG_TARGET,"📈 Combined CPU+GPU charts accessible via the 'Live Charts' tab");
+        info!(target: LOG_TARGET,"🔗 WebSocket endpoint: ws://localhost:8080/ws");
     } else {
-        info!("💡 Add --web flag to enable real-time unified dashboard");
+        info!(target: LOG_TARGET,"💡 Add --web flag to enable real-time unified dashboard");
     }
 
     // *** CREATE DUAL-INDEPENDENT MINERS ***
-    
+
     // 1. Create CPU miner with shared stats and proper thread coordination
     let cpu_miner = create_multi_gpu_cpu_miner(
         args,
@@ -437,7 +503,8 @@ async fn handle_hybrid_mining(args: &Args, algo: Algorithm) -> Result<()> {
         Arc::clone(&unified_stats),
         gpu_count, // Dynamic GPU count for thread offset calculation
         cpu_thread_count,
-    ).await?;
+    )
+    .await?;
 
     // 2. Create GPU miner with shared stats for hybrid mode
     let gpu_miner = create_multi_gpu_gpu_miner(
@@ -446,38 +513,42 @@ async fn handle_hybrid_mining(args: &Args, algo: Algorithm) -> Result<()> {
         gpu_manager,
         Arc::clone(&unified_stats),
         gpu_settings.clone(),
-    ).await?;
+    )
+    .await?;
 
-    info!("🚀 Starting DUAL-INDEPENDENT MULTI-GPU hybrid mining!");
-    info!("💪 Expected combined hashrate: 400+ MH/s (GPU: {}% intensity)", gpu_settings.intensity);
-    info!("🛡️ Resilient design: Each miner has independent pool connection");
+    info!(target: LOG_TARGET,"🚀 Starting DUAL-INDEPENDENT MULTI-GPU hybrid mining!");
+    info!(target: LOG_TARGET,
+        "💪 Expected combined hashrate: 400+ MH/s (GPU: {}% intensity)",
+        gpu_settings.intensity
+    );
+    info!(target: LOG_TARGET,"🛡️ Resilient design: Each miner has independent pool connection");
 
     // *** RUN BOTH MINERS INDEPENDENTLY ***
     let cpu_handle = tokio::spawn(async move {
-        info!("🧵 Starting independent CPU miner...");
+        info!(target: LOG_TARGET,"🧵 Starting independent CPU miner...");
         if let Err(e) = cpu_miner.run().await {
-            error!("❌ CPU miner failed: {}", e);
+            error!(target: LOG_TARGET,"❌ CPU miner failed: {}", e);
         } else {
-            info!("🧵 CPU miner completed successfully");
+            info!(target: LOG_TARGET,"🧵 CPU miner completed successfully");
         }
     });
 
     let gpu_handle = tokio::spawn(async move {
-        info!("🎮 Starting independent GPU miner...");
+        info!(target: LOG_TARGET,"🎮 Starting independent GPU miner...");
         if let Err(e) = gpu_miner.run().await {
-            error!("❌ GPU miner failed: {}", e);
+            error!(target: LOG_TARGET,"❌ GPU miner failed: {}", e);
         } else {
-            info!("🎮 GPU miner completed successfully");
+            info!(target: LOG_TARGET,"🎮 GPU miner completed successfully");
         }
     });
 
     // Wait for either to complete (shouldn't happen in normal operation)
     tokio::select! {
         _ = cpu_handle => {
-            error!("🔥 CPU miner stopped unexpectedly - GPU miner continues");
+            error!(target: LOG_TARGET,"🔥 CPU miner stopped unexpectedly - GPU miner continues");
         }
         _ = gpu_handle => {
-            error!("🔥 GPU miner stopped unexpectedly - CPU miner continues");
+            error!(target: LOG_TARGET,"🔥 GPU miner stopped unexpectedly - CPU miner continues");
         }
     }
 
@@ -488,28 +559,29 @@ async fn handle_hybrid_mining(args: &Args, algo: Algorithm) -> Result<()> {
 #[cfg(feature = "hybrid")]
 async fn handle_cpu_fallback(args: &Args, algo: Algorithm) -> Result<()> {
     use sha3x_miner::miner::CpuMiner;
-    
-    info!("🔄 Initializing CPU-only fallback mode...");
-    
+
+    info!(target: LOG_TARGET,"🔄 Initializing CPU-only fallback mode...");
+
     let miner = CpuMiner::new(
         args.wallet.as_ref().unwrap().clone(),
         args.pool.as_ref().unwrap().clone(),
         format!("{}-cpu-fallback", args.worker),
         args.threads,
         algo,
-    ).into_arc();
+    )
+    .into_arc();
 
     if args.web {
         let miner_clone = miner.clone();
         tokio::spawn(async move {
             let stats = miner_clone.get_stats();
-            info!("🌐 Starting fallback web dashboard server...");
+            info!(target: LOG_TARGET,"🌐 Starting fallback web dashboard server...");
             web_server::start_web_server(stats).await;
         });
-        info!("📊 Fallback dashboard available at: http://localhost:8080");
+        info!(target: LOG_TARGET,"📊 Fallback dashboard available at: http://localhost:8080");
     }
 
-    info!("🚀 Starting CPU fallback mining");
+    info!(target: LOG_TARGET,"🚀 Starting CPU fallback mining");
     miner.run().await?;
     Ok(())
 }
@@ -524,10 +596,13 @@ async fn create_multi_gpu_cpu_miner(
     cpu_thread_count: usize,
 ) -> Result<Arc<sha3x_miner::miner::CpuMiner>> {
     use sha3x_miner::miner::CpuMiner;
-    
-    info!("🧵 Creating multi-GPU aware CPU miner component...");
-    info!("🎮 Detected {} GPU device(s) - CPU threads will start at ID {}", gpu_count, gpu_count);
-    
+
+    info!(target: LOG_TARGET,"🧵 Creating multi-GPU aware CPU miner component...");
+    info!(target: LOG_TARGET,
+        "🎮 Detected {} GPU device(s) - CPU threads will start at ID {}",
+        gpu_count, gpu_count
+    );
+
     // *** CRITICAL FIX: Use new multi-GPU aware constructor ***
     let cpu_miner = CpuMiner::new_with_shared_stats(
         args.wallet.as_ref().unwrap().clone(),
@@ -538,13 +613,18 @@ async fn create_multi_gpu_cpu_miner(
         shared_stats, // ✅ Shared stats for unified dashboard
         gpu_count,    // ✅ Dynamic GPU count for thread coordination
     );
-    
-    info!("✅ Multi-GPU CPU miner created:");
-    info!("├─ Worker: {}-cpu", args.worker);
-    info!("├─ Threads: {} (IDs: {}-{})", cpu_thread_count, gpu_count, gpu_count + cpu_thread_count - 1);
-    info!("├─ Pool connection: Independent (resilient)");
-    info!("└─ Stats: Shared with GPU (unified dashboard)");
-    
+
+    info!(target: LOG_TARGET,"✅ Multi-GPU CPU miner created:");
+    info!(target: LOG_TARGET,"├─ Worker: {}-cpu", args.worker);
+    info!(target: LOG_TARGET,
+        "├─ Threads: {} (IDs: {}-{})",
+        cpu_thread_count,
+        gpu_count,
+        gpu_count + cpu_thread_count - 1
+    );
+    info!(target: LOG_TARGET,"├─ Pool connection: Independent (resilient)");
+    info!(target: LOG_TARGET,"└─ Stats: Shared with GPU (unified dashboard)");
+
     Ok(cpu_miner.into_arc())
 }
 
@@ -558,11 +638,14 @@ async fn create_multi_gpu_gpu_miner(
     gpu_settings: sha3x_miner::core::types::GpuSettings,
 ) -> Result<Arc<sha3x_miner::miner::gpu::GpuMiner>> {
     use sha3x_miner::miner::gpu::GpuMiner;
-    
+
     let gpu_count = gpu_manager.device_count();
-    info!("🎮 Creating multi-GPU aware GPU miner component...");
-    info!("🎮 GPU Settings: intensity={}%, batch={:?}", gpu_settings.intensity, gpu_settings.batch_size);
-    
+    info!(target: LOG_TARGET,"🎮 Creating multi-GPU aware GPU miner component...");
+    info!(target: LOG_TARGET,
+        "🎮 GPU Settings: intensity={}%, batch={:?}",
+        gpu_settings.intensity, gpu_settings.batch_size
+    );
+
     // *** CRITICAL FIX: Use new_for_hybrid with shared stats ***
     let gpu_miner = GpuMiner::new_for_hybrid(
         args.wallet.as_ref().unwrap().clone(),
@@ -573,20 +656,27 @@ async fn create_multi_gpu_gpu_miner(
         gpu_settings.clone(), // ✅ Apply GPU settings
         shared_stats,         // ✅ Shared stats for unified dashboard
         Arc::new(sha3x_miner::pool::client::PoolClient::new()), // ✅ Independent pool client
-        0, // ✅ GPU threads start at 0 (will handle multiple devices internally)
+        0,                    // ✅ GPU threads start at 0 (will handle multiple devices internally)
     )?;
-    
-    info!("✅ Multi-GPU GPU miner created:");
-    info!("├─ Worker: {}-gpu", args.worker);
+
+    info!(target: LOG_TARGET,"✅ Multi-GPU GPU miner created:");
+    info!(target: LOG_TARGET,"├─ Worker: {}-gpu", args.worker);
     if gpu_count == 1 {
-        info!("├─ Device: 1 (thread ID: 0)");
+        info!(target: LOG_TARGET,"├─ Device: 1 (thread ID: 0)");
     } else {
-        info!("├─ Devices: {} (thread IDs: 0-{})", gpu_count, gpu_count - 1);
+        info!(target: LOG_TARGET,
+            "├─ Devices: {} (thread IDs: 0-{})",
+            gpu_count,
+            gpu_count - 1
+        );
     }
-    info!("├─ Settings: {}% intensity, batch {:?}", gpu_settings.intensity, gpu_settings.batch_size);
-    info!("├─ Pool connection: Independent (resilient)");
-    info!("└─ Stats: Shared with CPU (unified dashboard)");
-    
+    info!(target: LOG_TARGET,
+        "├─ Settings: {}% intensity, batch {:?}",
+        gpu_settings.intensity, gpu_settings.batch_size
+    );
+    info!(target: LOG_TARGET,"├─ Pool connection: Independent (resilient)");
+    info!(target: LOG_TARGET,"└─ Stats: Shared with CPU (unified dashboard)");
+
     Ok(gpu_miner.into_arc())
 }
 
@@ -599,7 +689,7 @@ async fn create_multi_gpu_gpu_miner(
 //   4. Fault tolerance: One miner failure doesn't affect the other
 //   *** MULTI-GPU SUPPORT ***:
 //   - Supports 1-N GPU devices automatically
-//   - Thread allocation: GPU devices 0-(N-1), CPU threads N-(N+CPU_COUNT-1)  
+//   - Thread allocation: GPU devices 0-(N-1), CPU threads N-(N+CPU_COUNT-1)
 //   - Dynamic stats array sizing based on total thread count
 //   *** TECHNICAL IMPLEMENTATION ***:
 //   - Uses CpuMiner::new_with_shared_stats() for proper thread coordination
