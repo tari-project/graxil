@@ -17,17 +17,16 @@
 // - src/pool/sv2_protocol.rs (SV2 protocol logic)
 // - Depends on: binary_sv2, codec_sv2, roles_logic_sv2
 
-use binary_sv2::{
-    U256 as SV2U256,
-    SetupConnection, SetupConnectionSuccess, SetupConnectionError,
-    OpenStandardMiningChannel, OpenStandardMiningChannelSuccess, OpenMiningChannelError,
-    NewMiningJob, SubmitSharesStandard, SubmitSharesSuccess, SubmitSharesError,
-    SetTarget, CloseChannel, UpdateChannel,
-};
-use codec_sv2::{StandardEitherFrame, StandardSv2Frame, Encoder, Decoder};
-use roles_logic_sv2::mining_sv2::{MiningDeviceMessages, PoolMessages};
-use crate::core::types::{Algorithm, Sv2Channel, Sv2Job};
 use crate::core::difficulty::U256;
+use crate::core::types::{Algorithm, Sv2Channel, Sv2Job};
+use binary_sv2::{
+    CloseChannel, NewMiningJob, OpenMiningChannelError, OpenStandardMiningChannel,
+    OpenStandardMiningChannelSuccess, SetTarget, SetupConnection, SetupConnectionError,
+    SetupConnectionSuccess, SubmitSharesError, SubmitSharesStandard, SubmitSharesSuccess,
+    U256 as SV2U256, UpdateChannel,
+};
+use codec_sv2::{Decoder, Encoder, StandardEitherFrame, StandardSv2Frame};
+use roles_logic_sv2::mining_sv2::{MiningDeviceMessages, PoolMessages};
 use std::sync::atomic::{AtomicU32, Ordering};
 use tracing::{debug, error, info, warn};
 
@@ -82,8 +81,8 @@ impl Sv2Protocol {
         let message = MiningDeviceMessages::SetupConnection(setup_msg);
         let frame = StandardSv2Frame::from_message(message, 0, false)?;
         let encoded = self.encoder.encode(StandardEitherFrame::Standard(frame))?;
-        
-        debug!("Created SetupConnection message: {} bytes", encoded.len());
+
+        debug!(target: LOG_TARGET,"Created SetupConnection message: {} bytes", encoded.len());
         Ok(encoded)
     }
 
@@ -104,8 +103,8 @@ impl Sv2Protocol {
         let message = MiningDeviceMessages::OpenStandardMiningChannel(open_msg);
         let frame = StandardSv2Frame::from_message(message, 0, false)?;
         let encoded = self.encoder.encode(StandardEitherFrame::Standard(frame))?;
-        
-        info!("Created OpenStandardMiningChannel for user: {}, hashrate: {} H/s", 
+
+        info!(target: LOG_TARGET,"Created OpenStandardMiningChannel for user: {}, hashrate: {} H/s", 
               user_identity, nominal_hashrate);
         Ok(encoded)
     }
@@ -131,9 +130,11 @@ impl Sv2Protocol {
         let message = MiningDeviceMessages::SubmitSharesStandard(submit_msg);
         let frame = StandardSv2Frame::from_message(message, 0, false)?;
         let encoded = self.encoder.encode(StandardEitherFrame::Standard(frame))?;
-        
-        debug!("Created SubmitSharesStandard: channel={}, job={}, nonce={:08x}, ntime={:08x}", 
-               channel_id, job_id, nonce, ntime);
+
+        debug!(target: LOG_TARGET,
+            "Created SubmitSharesStandard: channel={}, job={}, nonce={:08x}, ntime={:08x}",
+            channel_id, job_id, nonce, ntime
+        );
         Ok(encoded)
     }
 
@@ -153,8 +154,11 @@ impl Sv2Protocol {
         let message = MiningDeviceMessages::UpdateChannel(update_msg);
         let frame = StandardSv2Frame::from_message(message, 0, false)?;
         let encoded = self.encoder.encode(StandardEitherFrame::Standard(frame))?;
-        
-        debug!("Created UpdateChannel: channel={}, hashrate={} H/s", channel_id, nominal_hashrate);
+
+        debug!(target: LOG_TARGET,
+            "Created UpdateChannel: channel={}, hashrate={} H/s",
+            channel_id, nominal_hashrate
+        );
         Ok(encoded)
     }
 
@@ -172,13 +176,16 @@ impl Sv2Protocol {
         let message = MiningDeviceMessages::CloseChannel(close_msg);
         let frame = StandardSv2Frame::from_message(message, 0, false)?;
         let encoded = self.encoder.encode(StandardEitherFrame::Standard(frame))?;
-        
-        info!("Created CloseChannel: channel={}, reason={}", channel_id, reason);
+
+        info!(target: LOG_TARGET,"Created CloseChannel: channel={}, reason={}", channel_id, reason);
         Ok(encoded)
     }
 
     /// Decode incoming SV2 messages from the pool
-    pub fn decode_message(&mut self, data: &[u8]) -> Result<Vec<Sv2Message>, Box<dyn std::error::Error>> {
+    pub fn decode_message(
+        &mut self,
+        data: &[u8],
+    ) -> Result<Vec<Sv2Message>, Box<dyn std::error::Error>> {
         let mut messages = Vec::new();
         let mut remaining_data = data;
 
@@ -186,7 +193,7 @@ impl Sv2Protocol {
             match self.decoder.next_frame(remaining_data) {
                 Ok((consumed, Some(frame))) => {
                     remaining_data = &remaining_data[consumed..];
-                    
+
                     match frame {
                         StandardEitherFrame::Standard(sv2_frame) => {
                             if let Ok(message) = sv2_frame.payload() {
@@ -195,7 +202,7 @@ impl Sv2Protocol {
                             }
                         }
                         _ => {
-                            warn!("Received non-standard SV2 frame, ignoring");
+                            warn!(target: LOG_TARGET,"Received non-standard SV2 frame, ignoring");
                         }
                     }
                 }
@@ -205,7 +212,7 @@ impl Sv2Protocol {
                     break;
                 }
                 Err(e) => {
-                    error!("Failed to decode SV2 frame: {}", e);
+                    error!(target: LOG_TARGET,"Failed to decode SV2 frame: {}", e);
                     break;
                 }
             }
@@ -215,22 +222,26 @@ impl Sv2Protocol {
     }
 
     /// Parse a pool message into our internal representation
-    fn parse_pool_message(&self, message: PoolMessages) -> Result<Sv2Message, Box<dyn std::error::Error>> {
+    fn parse_pool_message(
+        &self,
+        message: PoolMessages,
+    ) -> Result<Sv2Message, Box<dyn std::error::Error>> {
         match message {
             PoolMessages::SetupConnectionSuccess(msg) => {
-                info!("✅ SV2 Setup successful - flags: {:032b}", msg.flags);
-                Ok(Sv2Message::SetupSuccess {
-                    flags: msg.flags,
-                })
+                info!(target: LOG_TARGET,"✅ SV2 Setup successful - flags: {:032b}", msg.flags);
+                Ok(Sv2Message::SetupSuccess { flags: msg.flags })
             }
             PoolMessages::SetupConnectionError(msg) => {
-                error!("❌ SV2 Setup failed: {}", std::str::from_utf8(&msg.error_code)?);
+                error!(target: LOG_TARGET,
+                    "❌ SV2 Setup failed: {}",
+                    std::str::from_utf8(&msg.error_code)?
+                );
                 Ok(Sv2Message::SetupError {
                     error_code: msg.error_code.to_vec(),
                 })
             }
             PoolMessages::OpenStandardMiningChannelSuccess(msg) => {
-                info!("✅ SV2 Channel opened - ID: {}, target: {:064x}", 
+                info!(target: LOG_TARGET,"✅ SV2 Channel opened - ID: {}, target: {:064x}", 
                       msg.channel_id, msg.target);
                 Ok(Sv2Message::ChannelSuccess {
                     request_id: msg.request_id,
@@ -241,14 +252,17 @@ impl Sv2Protocol {
                 })
             }
             PoolMessages::OpenMiningChannelError(msg) => {
-                error!("❌ SV2 Channel failed: {}", std::str::from_utf8(&msg.error_code)?);
+                error!(target: LOG_TARGET,
+                    "❌ SV2 Channel failed: {}",
+                    std::str::from_utf8(&msg.error_code)?
+                );
                 Ok(Sv2Message::ChannelError {
                     request_id: msg.request_id,
                     error_code: msg.error_code.to_vec(),
                 })
             }
             PoolMessages::NewMiningJob(msg) => {
-                info!("📋 SV2 New job - Channel: {}, Job: {}, Version: {:08x}", 
+                info!(target: LOG_TARGET,"📋 SV2 New job - Channel: {}, Job: {}, Version: {:08x}", 
                       msg.channel_id, msg.job_id, msg.version);
                 Ok(Sv2Message::NewJob {
                     channel_id: msg.channel_id,
@@ -259,7 +273,7 @@ impl Sv2Protocol {
                 })
             }
             PoolMessages::SetTarget(msg) => {
-                info!("🔧 SV2 Target update - Channel: {}, Target: {:064x}", 
+                info!(target: LOG_TARGET,"🔧 SV2 Target update - Channel: {}, Target: {:064x}", 
                       msg.channel_id, msg.maximum_target);
                 Ok(Sv2Message::SetTarget {
                     channel_id: msg.channel_id,
@@ -267,7 +281,7 @@ impl Sv2Protocol {
                 })
             }
             PoolMessages::SubmitSharesSuccess(msg) => {
-                info!("✅ SV2 Share accepted - Channel: {}, Sequence: {}, Count: {}", 
+                info!(target: LOG_TARGET,"✅ SV2 Share accepted - Channel: {}, Sequence: {}, Count: {}", 
                       msg.channel_id, msg.last_sequence_number, msg.new_submits_accepted_count);
                 Ok(Sv2Message::ShareSuccess {
                     channel_id: msg.channel_id,
@@ -277,8 +291,12 @@ impl Sv2Protocol {
                 })
             }
             PoolMessages::SubmitSharesError(msg) => {
-                error!("❌ SV2 Share rejected - Channel: {}, Sequence: {}, Error: {}", 
-                       msg.channel_id, msg.sequence_number, std::str::from_utf8(&msg.error_code)?);
+                error!(target: LOG_TARGET,
+                    "❌ SV2 Share rejected - Channel: {}, Sequence: {}, Error: {}",
+                    msg.channel_id,
+                    msg.sequence_number,
+                    std::str::from_utf8(&msg.error_code)?
+                );
                 Ok(Sv2Message::ShareError {
                     channel_id: msg.channel_id,
                     sequence_number: msg.sequence_number,
@@ -286,7 +304,7 @@ impl Sv2Protocol {
                 })
             }
             _ => {
-                warn!("Received unhandled SV2 message type");
+                warn!(target: LOG_TARGET,"Received unhandled SV2 message type");
                 Ok(Sv2Message::Unknown)
             }
         }
@@ -312,30 +330,30 @@ impl Sv2Protocol {
         let base_target = if hashrate > 1_000_000.0 {
             // > 1 MH/s - can handle higher difficulty
             SV2U256::from_big_endian(&[
-                0x00, 0x00, 0x00, 0x00, 0x0F, 0xFF, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x0F, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
             ])
         } else if hashrate > 100_000.0 {
             // 100 KH/s - 1 MH/s
             SV2U256::from_big_endian(&[
-                0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
             ])
         } else {
             // < 100 KH/s - very easy target
             SV2U256::from_big_endian(&[
-                0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
             ])
         };
 
-        debug!("Calculated max target for hashrate {} H/s: {:064x}", hashrate, base_target);
+        debug!(target: LOG_TARGET,
+            "Calculated max target for hashrate {} H/s: {:064x}",
+            hashrate, base_target
+        );
         base_target
     }
 }
@@ -410,12 +428,15 @@ impl Sv2Message {
     pub fn to_sv2_channel(&self, nominal_hashrate: f32) -> Option<Sv2Channel> {
         match self {
             Sv2Message::ChannelSuccess {
-                channel_id,
-                target,
-                ..
+                channel_id, target, ..
             } => {
                 let max_target = Sv2Protocol::calculate_max_target(nominal_hashrate);
-                Some(Sv2Channel::new(*channel_id, *target, nominal_hashrate, max_target))
+                Some(Sv2Channel::new(
+                    *channel_id,
+                    *target,
+                    nominal_hashrate,
+                    max_target,
+                ))
             }
             _ => None,
         }
@@ -423,17 +444,20 @@ impl Sv2Message {
 
     /// Check if this is an error message
     pub fn is_error(&self) -> bool {
-        matches!(self, Sv2Message::SetupError { .. } | 
-                      Sv2Message::ChannelError { .. } | 
-                      Sv2Message::ShareError { .. })
+        matches!(
+            self,
+            Sv2Message::SetupError { .. }
+                | Sv2Message::ChannelError { .. }
+                | Sv2Message::ShareError { .. }
+        )
     }
 
     /// Get error description if this is an error message
     pub fn error_description(&self) -> Option<String> {
         match self {
-            Sv2Message::SetupError { error_code } |
-            Sv2Message::ChannelError { error_code, .. } |
-            Sv2Message::ShareError { error_code, .. } => {
+            Sv2Message::SetupError { error_code }
+            | Sv2Message::ChannelError { error_code, .. }
+            | Sv2Message::ShareError { error_code, .. } => {
                 String::from_utf8(error_code.clone()).ok()
             }
             _ => None,
@@ -445,22 +469,22 @@ impl Sv2Message {
 impl Sv2Protocol {
     /// Get the protocol version we support
     pub const PROTOCOL_VERSION: u16 = 2;
-    
+
     /// Get our vendor string
     pub const VENDOR: &'static str = "sha3x-miner";
-    
+
     /// Get our hardware version
     pub const HARDWARE_VERSION: &'static str = "2.0.0";
-    
+
     /// Get our firmware version
     pub const FIRMWARE_VERSION: &'static str = "sha3x-miner-sv2";
-    
+
     /// Get our device ID
     pub const DEVICE_ID: &'static str = "sha3x-cpu-miner";
-    
+
     /// Standard mining protocol ID
     pub const MINING_PROTOCOL: u8 = 0;
-    
+
     /// Flags for setup connection
     pub const REQUIRES_STANDARD_JOBS: u32 = 0b001;
     pub const REQUIRES_WORK_SELECTION: u32 = 0b010;

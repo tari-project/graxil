@@ -17,17 +17,19 @@
 // - src/miner/stats/miner_stats.rs (miner-wide statistics logic)
 // - Depends on: std, thread_stats, gpu_info, serde, sysinfo
 
+use super::gpu_info::GpuInfo;
+use super::thread_stats::ThreadStats;
 use crate::core::types::Algorithm;
 use crate::pool::client::PoolClient;
-use super::thread_stats::ThreadStats;
-use super::gpu_info::GpuInfo;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
-use tracing::{debug, info};
+use log::{debug, info};
 use serde::Serialize;
-use sysinfo::{System, Components};
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use sysinfo::{Components, System};
+
+const LOG_TARGET: &str = "tari::graxil::miner_stats";
 
 #[allow(dead_code)] // Fields unused in non-TUI version but kept for future use
 #[derive(Debug)]
@@ -125,7 +127,7 @@ pub struct MinerStats {
     recent_jobs: Arc<Mutex<VecDeque<JobInfo>>>,
     system: Arc<Mutex<System>>,
     pool_client: Option<Arc<PoolClient>>,
-    gpu_info: Arc<Mutex<GpuInfo>>, // Added GPU monitoring
+    gpu_info: Arc<Mutex<GpuInfo>>,         // Added GPU monitoring
     gpu_last_refresh: Arc<Mutex<Instant>>, // Track GPU refresh timing
 }
 
@@ -163,7 +165,7 @@ impl MinerStats {
     }
 
     pub fn set_algorithm(&mut self, algo: Algorithm) {
-        debug!("Setting algorithm to {:?}", algo);
+        debug!(target: LOG_TARGET,"Setting algorithm to {:?}", algo);
         self.algo = algo;
     }
 
@@ -179,12 +181,14 @@ impl MinerStats {
             let mut gpu_info = self.gpu_info.lock().unwrap();
             gpu_info.refresh();
             *last_refresh = Instant::now();
-            
+
             if gpu_info.is_available() {
-                debug!("GPU info refreshed: {} at {}°C, {}% usage", 
-                       gpu_info.name, 
-                       gpu_info.temperature.unwrap_or(0.0),
-                       gpu_info.utilization.unwrap_or(0.0));
+                debug!(target: LOG_TARGET,
+                    "GPU info refreshed: {} at {}°C, {}% usage",
+                    gpu_info.name,
+                    gpu_info.temperature.unwrap_or(0.0),
+                    gpu_info.utilization.unwrap_or(0.0)
+                );
             }
         }
     }
@@ -210,7 +214,7 @@ impl MinerStats {
             recent_jobs.pop_front();
         }
 
-        debug!("Updated job: {:?}", current_job);
+        debug!(target: LOG_TARGET,"Updated job: {:?}", current_job);
     }
 
     pub fn add_activity(&self, message: String) {
@@ -221,12 +225,19 @@ impl MinerStats {
         }
     }
 
-    pub fn record_share_found(&self, thread_id: usize, difficulty: u64, target: u64, accepted: bool) {
+    pub fn record_share_found(
+        &self,
+        thread_id: usize,
+        difficulty: u64,
+        target: u64,
+        accepted: bool,
+    ) {
         if thread_id < self.thread_stats.len() {
             self.thread_stats[thread_id].record_share(difficulty, accepted);
         }
 
-        self.total_work_submitted.fetch_add(difficulty, Ordering::Relaxed);
+        self.total_work_submitted
+            .fetch_add(difficulty, Ordering::Relaxed);
 
         let mut shares = self.recent_shares.lock().unwrap();
         shares.push_back(ShareInfo {
@@ -299,34 +310,43 @@ impl MinerStats {
     pub fn to_websocket_data(&self) -> WebSocketData {
         // Refresh GPU info if needed
         self.refresh_gpu_info_if_needed();
-        
+
         let shares_submitted = self.shares_submitted.load(Ordering::Relaxed);
         let shares_accepted = self.shares_accepted.load(Ordering::Relaxed);
         let shares_rejected = self.shares_rejected.load(Ordering::Relaxed);
         let total_hashes = self.hashes_computed.load(Ordering::Relaxed);
         let total_work = self.total_work_submitted.load(Ordering::Relaxed);
-        
-        let current_difficulty = self.thread_stats
+
+        let current_difficulty = self
+            .thread_stats
             .iter()
             .map(|t| t.current_difficulty_target.load(Ordering::Relaxed))
             .max()
             .unwrap_or(0);
         let expected_shares = if current_difficulty > 0 {
             (total_hashes as f64 / current_difficulty as f64).max(1.0)
-        } else { 1.0 };
+        } else {
+            1.0
+        };
         let work_efficiency = if expected_shares > 0.0 {
             (shares_accepted as f64 / expected_shares) * 100.0
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         let shares = self.recent_shares.lock().unwrap();
         let avg_luck = if !shares.is_empty() {
-            let total_luck: f64 = shares.iter()
+            let total_luck: f64 = shares
+                .iter()
                 .map(|s| s.difficulty as f64 / s.target as f64)
                 .sum();
             total_luck / shares.len() as f64
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
-        let recent_shares: Vec<WebSocketShare> = shares.iter()
+        let recent_shares: Vec<WebSocketShare> = shares
+            .iter()
             .rev()
             .take(20)
             .map(|s| WebSocketShare {
@@ -338,26 +358,31 @@ impl MinerStats {
             })
             .collect();
 
-        let mut top_shares: Vec<u64> = shares.iter()
-            .map(|s| s.difficulty)
-            .collect();
+        let mut top_shares: Vec<u64> = shares.iter().map(|s| s.difficulty).collect();
         top_shares.sort_by(|a, b| b.cmp(a));
         let top_shares: Vec<u64> = top_shares.into_iter().take(5).collect();
 
         let session_duration = self.start_time.elapsed();
-        let time_since_last_share = shares.back()
+        let time_since_last_share = shares
+            .back()
             .map(|s| Instant::now().duration_since(s.time).as_secs())
             .unwrap_or(0);
-        
+
         let avg_share_time = if shares_submitted > 0 {
             session_duration.as_secs_f64() / shares_submitted as f64
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         let acceptance_rate = if shares_submitted > 0 {
             (shares_accepted as f64 / shares_submitted as f64) * 100.0
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
-        let thread_hashrates: Vec<u64> = self.thread_stats.iter()
+        let thread_hashrates: Vec<u64> = self
+            .thread_stats
+            .iter()
             .map(|t| t.get_hashrate() as u64)
             .collect();
 
@@ -369,7 +394,10 @@ impl MinerStats {
             difficulty: current_job.difficulty,
             timestamp: current_job.timestamp,
         };
-        let recent_jobs: Vec<JobInfo> = self.recent_jobs.lock().unwrap()
+        let recent_jobs: Vec<JobInfo> = self
+            .recent_jobs
+            .lock()
+            .unwrap()
             .iter()
             .map(|job| JobInfo {
                 job_id: job.job_id.clone(),
@@ -382,7 +410,7 @@ impl MinerStats {
         // Get system info
         let mut system = self.system.lock().unwrap();
         system.refresh_all();
-        
+
         // Calculate average CPU usage across all cores (proper system-wide usage)
         let cpu_usage = if !system.cpus().is_empty() {
             let total_usage: f32 = system.cpus().iter().map(|cpu| cpu.cpu_usage()).sum();
@@ -390,15 +418,19 @@ impl MinerStats {
         } else {
             0.0
         };
-        
+
         // Get temperature information
         let components = Components::new_with_refreshed_list();
         let (cpu_temp, max_temp) = get_temperatures(&components);
-        
+
         let system_info = SystemInfo {
             cpu_usage,
             cpu_cores: system.cpus().len(),
-            cpu_name: system.cpus().first().map(|cpu| cpu.brand().to_string()).unwrap_or_else(|| "Unknown".to_string()),
+            cpu_name: system
+                .cpus()
+                .first()
+                .map(|cpu| cpu.brand().to_string())
+                .unwrap_or_else(|| "Unknown".to_string()),
             memory_total: system.total_memory(),
             memory_used: system.used_memory(),
             memory_usage: (system.used_memory() as f64 / system.total_memory() as f64) * 100.0,
@@ -432,8 +464,12 @@ impl MinerStats {
         // Get GPU info
         let gpu_info = self.gpu_info.lock().unwrap().clone();
 
-        debug!("WebSocket data - Thread count: {}, Hashrates: {:?}, GPU: {}", 
-               self.thread_stats.len(), thread_hashrates, gpu_info.name);
+        debug!(target: LOG_TARGET,
+            "WebSocket data - Thread count: {}, Hashrates: {:?}, GPU: {}",
+            self.thread_stats.len(),
+            thread_hashrates,
+            gpu_info.name
+        );
 
         WebSocketData {
             current_hashrate: self.get_total_hashrate() as u64,
@@ -513,31 +549,32 @@ impl MinerStats {
             0.0
         };
         let session_time = self.start_time.elapsed();
-        let current_difficulty = self.thread_stats
+        let current_difficulty = self
+            .thread_stats
             .iter()
             .map(|t| t.current_difficulty_target.load(Ordering::Relaxed))
             .max()
             .unwrap_or(0);
 
         let shares = self.recent_shares.lock().unwrap();
-        let mut top_shares: Vec<u64> = shares.iter()
-            .map(|s| s.difficulty)
-            .collect();
-        debug!("All share difficulties: {:?}", top_shares);
+        let mut top_shares: Vec<u64> = shares.iter().map(|s| s.difficulty).collect();
+        debug!(target: LOG_TARGET,"All share difficulties: {:?}", top_shares);
         top_shares.sort_by(|a, b| b.cmp(a));
         let top_shares: Vec<u64> = top_shares.into_iter().take(5).collect();
-        debug!("Top 5 share difficulties: {:?}", top_shares);
+        debug!(target: LOG_TARGET,"Top 5 share difficulties: {:?}", top_shares);
         let top_shares_str = if top_shares.is_empty() {
             "None".to_string()
         } else {
-            top_shares.iter()
+            top_shares
+                .iter()
                 .map(|d| Self::format_number(*d))
                 .collect::<Vec<_>>()
                 .join(" | ")
         };
 
         let avg_luck = if !shares.is_empty() {
-            let total_luck: f64 = shares.iter()
+            let total_luck: f64 = shares
+                .iter()
                 .map(|s| s.difficulty as f64 / s.target as f64)
                 .sum();
             total_luck / shares.len() as f64
@@ -556,7 +593,8 @@ impl MinerStats {
             0.0
         };
 
-        let time_since_last_share = shares.back()
+        let time_since_last_share = shares
+            .back()
             .map(|s| Instant::now().duration_since(s.time))
             .unwrap_or(Duration::from_secs(0));
 
@@ -578,23 +616,39 @@ impl MinerStats {
             "No GPU detected".to_string()
         };
 
-        info!("📊 MINER DASHBOARD - {}", dashboard_id);
-        info!("├─ Algorithm: {:?}", self.algo);
-        info!("├─ Current Hashrate: {}", Self::format_hashrate(hashrate));
-        info!("├─ Session Avg: {}", Self::format_hashrate(hashrate));
-        info!("├─ Total Work: {}", Self::format_number(total_work));
-        info!("├─ Top 5 Shares: {}", top_shares_str);
-        info!("├─ Shares: {}/{} ({:.1}% accepted)", shares_accepted, shares_submitted, acceptance_rate);
-        info!("├─ Rejected Shares: {}", shares_rejected);
-        info!("├─ Work Efficiency: {:.1}%", work_efficiency);
-        info!("├─ Average Luck: {:.2}x", avg_luck);
-        info!("├─ Share Rate: {:.2} shares/min", share_rate);
-        info!("├─ Time Since Last Share: {}", Self::format_duration(time_since_last_share));
-        info!("├─ Average Share Time: {}", Self::format_duration(avg_share_time));
-        info!("├─ Session Time: {}", Self::format_duration(session_time));
-        info!("├─ Active Threads: {}/{}", active_threads, self.thread_stats.len());
-        info!("├─ Current Difficulty: {}", Self::format_number(current_difficulty));
-        info!("└─ GPU Status: {}", gpu_status);
+        info!(target: LOG_TARGET,"📊 MINER DASHBOARD - {}", dashboard_id);
+        info!(target: LOG_TARGET,"├─ Algorithm: {:?}", self.algo);
+        info!(target: LOG_TARGET,"├─ Current Hashrate: {}", Self::format_hashrate(hashrate));
+        info!(target: LOG_TARGET,"├─ Session Avg: {}", Self::format_hashrate(hashrate));
+        info!(target: LOG_TARGET,"├─ Total Work: {}", Self::format_number(total_work));
+        info!(target: LOG_TARGET,"├─ Top 5 Shares: {}", top_shares_str);
+        info!(target: LOG_TARGET,
+            "├─ Shares: {}/{} ({:.1}% accepted)",
+            shares_accepted, shares_submitted, acceptance_rate
+        );
+        info!(target: LOG_TARGET,"├─ Rejected Shares: {}", shares_rejected);
+        info!(target: LOG_TARGET,"├─ Work Efficiency: {:.1}%", work_efficiency);
+        info!(target: LOG_TARGET,"├─ Average Luck: {:.2}x", avg_luck);
+        info!(target: LOG_TARGET,"├─ Share Rate: {:.2} shares/min", share_rate);
+        info!(target: LOG_TARGET,
+            "├─ Time Since Last Share: {}",
+            Self::format_duration(time_since_last_share)
+        );
+        info!(target: LOG_TARGET,
+            "├─ Average Share Time: {}",
+            Self::format_duration(avg_share_time)
+        );
+        info!(target: LOG_TARGET,"├─ Session Time: {}", Self::format_duration(session_time));
+        info!(target: LOG_TARGET,
+            "├─ Active Threads: {}/{}",
+            active_threads,
+            self.thread_stats.len()
+        );
+        info!(target: LOG_TARGET,
+            "├─ Current Difficulty: {}",
+            Self::format_number(current_difficulty)
+        );
+        info!(target: LOG_TARGET,"└─ GPU Status: {}", gpu_status);
     }
 }
 
@@ -603,21 +657,21 @@ fn get_temperatures(components: &Components) -> (Option<f32>, Option<f32>) {
     let mut cpu_temp: Option<f32> = None;
     let mut max_temp: Option<f32> = None;
     let mut highest_temp = 0.0f32;
-    
+
     for component in components {
         if let Some(temp) = component.temperature() {
             let label = component.label().to_lowercase();
-            
+
             // Look for CPU-related temperature sensors
-            if cpu_temp.is_none() && (
-                label.contains("cpu") || 
-                label.contains("core") || 
-                label.contains("package") ||
-                label.contains("processor")
-            ) {
+            if cpu_temp.is_none()
+                && (label.contains("cpu")
+                    || label.contains("core")
+                    || label.contains("package")
+                    || label.contains("processor"))
+            {
                 cpu_temp = Some(temp);
             }
-            
+
             // Track highest temperature across all components
             if temp > highest_temp {
                 highest_temp = temp;
@@ -625,7 +679,7 @@ fn get_temperatures(components: &Components) -> (Option<f32>, Option<f32>) {
             }
         }
     }
-    
+
     (cpu_temp, max_temp)
 }
 

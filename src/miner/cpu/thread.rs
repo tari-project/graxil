@@ -13,15 +13,25 @@
 // SHA3x miner, located in the cpu subdirectory of the miner module. It handles
 // nonce iteration, hash computation, and share detection for CPU mining.
 
-use crate::core::{calculate_difficulty, Algorithm, MiningJob, sha3x::sha3x_hash_with_nonce_batch, sha256::sha256d_hash_with_nonce_batch, difficulty::{bits_to_target, U256}};
+use crate::core::{
+    Algorithm, MiningJob, calculate_difficulty,
+    difficulty::{U256, bits_to_target},
+    sha3x::sha3x_hash_with_nonce_batch,
+    sha256::sha256d_hash_with_nonce_batch,
+};
 use crate::miner::stats::{MinerStats, ThreadStats};
-use tokio::sync::mpsc::UnboundedSender as MpscSender;
-use tokio::sync::broadcast::Receiver as BroadcastReceiver;
 use hex;
-use rand::{rngs::ThreadRng, Rng};
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU32, Ordering}};
-use std::time::{Instant, Duration};
-use tracing::{info, debug, error};
+use log::{debug, error, info};
+use rand::{Rng, rngs::ThreadRng};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU32, Ordering},
+};
+use std::time::{Duration, Instant};
+use tokio::sync::broadcast::Receiver as BroadcastReceiver;
+use tokio::sync::mpsc::UnboundedSender as MpscSender;
+
+const LOG_TARGET: &str = "tari::graxil::thread";
 
 pub fn start_mining_thread(
     thread_id: usize,
@@ -68,12 +78,16 @@ fn mining_thread(
 
         match job_rx.try_recv() {
             Ok(job) => {
-                debug!("Thread {}: Received job {}, target_difficulty={:016x}, algo={:?}", 
-                    thread_id, job.job_id, job.target_difficulty, job.algo);
-                thread_stats.current_difficulty_target.store(job.target_difficulty, Ordering::Relaxed);
+                debug!(target: LOG_TARGET,
+                    "Thread {}: Received job {}, target_difficulty={:016x}, algo={:?}",
+                    thread_id, job.job_id, job.target_difficulty, job.algo
+                );
+                thread_stats
+                    .current_difficulty_target
+                    .store(job.target_difficulty, Ordering::Relaxed);
                 current_job = Some(job);
             }
-            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {},
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {}
             Err(_) => break,
         }
 
@@ -85,45 +99,55 @@ fn mining_thread(
 
                     for _ in (0..1000).step_by(4) {
                         let batch_results = sha3x_hash_with_nonce_batch(&job.mining_hash, nonce);
-                        
+
                         for (hash, batch_nonce) in batch_results.iter() {
                             let difficulty = calculate_difficulty(hash, job.algo);
                             hash_count += 1;
 
                             if difficulty >= job.target_difficulty {
                                 // Convert local nonce to bytes (use only 6 least-significant bytes)
-let local_nonce = batch_nonce.to_le_bytes();
+                                let local_nonce = batch_nonce.to_le_bytes();
 
-// Decode XN (2 bytes) from job.extranonce2
-let xn = hex::decode(&job.extranonce2.clone().unwrap_or_default()).unwrap_or(vec![0, 0]);
+                                // Decode XN (2 bytes) from job.extranonce2
+                                let xn = hex::decode(&job.extranonce2.clone().unwrap_or_default())
+                                    .unwrap_or(vec![0, 0]);
 
-// Compose full 8-byte nonce: [XN][Local Nonce]
-let full_nonce = [
-    xn.get(0).copied().unwrap_or(0),
-    xn.get(1).copied().unwrap_or(0),
-    local_nonce[0],
-    local_nonce[1],
-    local_nonce[2],
-    local_nonce[3],
-    local_nonce[4],
-    local_nonce[5],
-];
+                                // Compose full 8-byte nonce: [XN][Local Nonce]
+                                let full_nonce = [
+                                    xn.get(0).copied().unwrap_or(0),
+                                    xn.get(1).copied().unwrap_or(0),
+                                    local_nonce[0],
+                                    local_nonce[1],
+                                    local_nonce[2],
+                                    local_nonce[3],
+                                    local_nonce[4],
+                                    local_nonce[5],
+                                ];
 
-// Encode as hex string
-let nonce_hex_le = hex::encode(full_nonce);
+                                // Encode as hex string
+                                let nonce_hex_le = hex::encode(full_nonce);
                                 let nonce_hex_be = hex::encode(batch_nonce.to_be_bytes());
                                 let result_hex = hex::encode(hash);
 
                                 thread_stats.record_share(difficulty, true);
-                                stats.record_share_found(thread_id, difficulty, job.target_difficulty, true);
+                                stats.record_share_found(
+                                    thread_id,
+                                    difficulty,
+                                    job.target_difficulty,
+                                    true,
+                                );
 
-                                info!("💎 Thread {} found SHA3X share! Difficulty: {}, Target: {}", 
-                                    thread_id, 
-                                    MinerStats::format_number(difficulty), 
-                                    MinerStats::format_number(job.target_difficulty));
-                                
-                                info!("🔍 Share details - Nonce LE: {}, Nonce BE: {}, Hash: {}", 
-                                    nonce_hex_le, nonce_hex_be, result_hex);
+                                info!(target: LOG_TARGET,
+                                    "💎 Thread {} found SHA3X share! Difficulty: {}, Target: {}",
+                                    thread_id,
+                                    MinerStats::format_number(difficulty),
+                                    MinerStats::format_number(job.target_difficulty)
+                                );
+
+                                info!(target: LOG_TARGET,
+                                    "🔍 Share details - Nonce LE: {}, Nonce BE: {}, Hash: {}",
+                                    nonce_hex_le, nonce_hex_be, result_hex
+                                );
 
                                 stats.add_activity(format!(
                                     "💎 Thread {} found SHA3X share! Difficulty: {}",
@@ -151,55 +175,77 @@ let nonce_hex_le = hex::encode(full_nonce);
                 Algorithm::Sha256 => {
                     let header = build_bitcoin_header(job);
                     if header.len() != 80 {
-                        error!("Thread {}: Invalid Bitcoin header length: {} bytes", thread_id, header.len());
+                        error!(target: LOG_TARGET,
+                            "Thread {}: Invalid Bitcoin header length: {} bytes",
+                            thread_id,
+                            header.len()
+                        );
                         continue;
                     }
-                    debug!("Thread {}: Header: {}", thread_id, hex::encode(&header));
+                    debug!(target: LOG_TARGET,"Thread {}: Header: {}", thread_id, hex::encode(&header));
 
                     let ntime = job.ntime.unwrap_or_else(|| {
-                        error!("Thread {}: No ntime provided for SHA-256 job", thread_id);
+                        error!(target: LOG_TARGET,"Thread {}: No ntime provided for SHA-256 job", thread_id);
                         0
                     });
 
                     static EXTRANONCE2_COUNTER: AtomicU32 = AtomicU32::new(0);
-                    let extranonce2_bytes = EXTRANONCE2_COUNTER.fetch_add(1, Ordering::SeqCst).to_le_bytes();
+                    let extranonce2_bytes = EXTRANONCE2_COUNTER
+                        .fetch_add(1, Ordering::SeqCst)
+                        .to_le_bytes();
                     let extranonce2 = hex::encode(extranonce2_bytes);
-                    debug!("Thread {}: Extranonce2: {}", thread_id, extranonce2);
+                    debug!(target: LOG_TARGET,"Thread {}: Extranonce2: {}", thread_id, extranonce2);
 
                     let target = if let Some(target_bytes) = job.target {
                         if target_bytes.len() != 32 {
-                            error!("Thread {}: Invalid target length: {} bytes", thread_id, target_bytes.len());
+                            error!(target: LOG_TARGET,
+                                "Thread {}: Invalid target length: {} bytes",
+                                thread_id,
+                                target_bytes.len()
+                            );
                             continue;
                         }
                         let target_u256 = U256::from_big_endian(&target_bytes); // Target is big-endian for comparison
                         if target_u256.is_zero() {
-                            error!("Thread {}: Zero target for job {}, skipping", thread_id, job.job_id);
+                            error!(target: LOG_TARGET,
+                                "Thread {}: Zero target for job {}, skipping",
+                                thread_id, job.job_id
+                            );
                             continue;
                         }
                         target_u256
                     } else if let Some(nbits) = job.nbits {
                         let target_u256 = bits_to_target(nbits);
                         if target_u256.is_zero() {
-                            error!("Thread {}: Zero target from nbits {:08x}, skipping", thread_id, nbits);
+                            error!(target: LOG_TARGET,
+                                "Thread {}: Zero target from nbits {:08x}, skipping",
+                                thread_id, nbits
+                            );
                             continue;
                         }
                         target_u256
                     } else {
-                        error!("Thread {}: No target or nbits for job {}, skipping", thread_id, job.job_id);
+                        error!(target: LOG_TARGET,
+                            "Thread {}: No target or nbits for job {}, skipping",
+                            thread_id, job.job_id
+                        );
                         continue;
                     };
-                    debug!("Thread {}: Target: {:064x}", thread_id, target);
+                    debug!(target: LOG_TARGET,"Thread {}: Target: {:064x}", thread_id, target);
 
                     let mut nonce = rng.r#gen::<u32>() as u64;
                     nonce = nonce.wrapping_add(thread_id as u64);
 
                     for _ in (0..1000).step_by(4) {
                         let batch_results = sha256d_hash_with_nonce_batch(&header, nonce as u32);
-                        
+
                         for (hash, batch_nonce) in batch_results.iter() {
                             hash_count += 1;
                             let hash_u256 = U256::from_big_endian(hash);
-                            debug!("Thread {}: Hash: {:064x}, Nonce: {:08x}", thread_id, hash_u256, batch_nonce);
+                            debug!(target: LOG_TARGET,
+                                "Thread {}: Hash: {:064x}, Nonce: {:08x}",
+                                thread_id, hash_u256, batch_nonce
+                            );
 
                             if hash_u256 <= target {
                                 let difficulty = calculate_difficulty(hash, job.algo);
@@ -207,16 +253,28 @@ let nonce_hex_le = hex::encode(full_nonce);
                                 let result_hex = hex::encode(hash);
 
                                 thread_stats.record_share(difficulty, true);
-                                stats.record_share_found(thread_id, difficulty, job.target_difficulty, true);
+                                stats.record_share_found(
+                                    thread_id,
+                                    difficulty,
+                                    job.target_difficulty,
+                                    true,
+                                );
 
-                                info!("💎 Thread {} found Bitcoin share! Difficulty: {}, Target: {:x}", 
-                                    thread_id, MinerStats::format_number(difficulty), target);
-                                info!("🔍 Share details - Job: {}, Nonce: {}, Extranonce2: {}, Ntime: {:08x}, Hash: {}", 
-                                    job.job_id, nonce_hex, extranonce2, ntime, result_hex);
+                                info!(target: LOG_TARGET,
+                                    "💎 Thread {} found Bitcoin share! Difficulty: {}, Target: {:x}",
+                                    thread_id,
+                                    MinerStats::format_number(difficulty),
+                                    target
+                                );
+                                info!(target: LOG_TARGET,
+                                    "🔍 Share details - Job: {}, Nonce: {}, Extranonce2: {}, Ntime: {:08x}, Hash: {}",
+                                    job.job_id, nonce_hex, extranonce2, ntime, result_hex
+                                );
 
                                 stats.add_activity(format!(
                                     "💎 Thread {} found Bitcoin share! Difficulty: {}",
-                                    thread_id, MinerStats::format_number(difficulty)
+                                    thread_id,
+                                    MinerStats::format_number(difficulty)
                                 ));
 
                                 let _ = share_tx.send((
@@ -240,9 +298,11 @@ let nonce_hex_le = hex::encode(full_nonce);
 
             if last_report.elapsed() > Duration::from_secs(1) {
                 thread_stats.update_hashrate(hash_count);
-                stats.hashes_computed.fetch_add(hash_count, Ordering::Relaxed);
+                stats
+                    .hashes_computed
+                    .fetch_add(hash_count, Ordering::Relaxed);
                 stats.update_hashrate_history(stats.hashes_computed.load(Ordering::Relaxed));
-                debug!("Thread {}: Hashrate: {} H/s", thread_id, hash_count);
+                debug!(target: LOG_TARGET,"Thread {}: Hashrate: {} H/s", thread_id, hash_count);
                 hash_count = 0;
                 last_report = Instant::now();
             }
@@ -254,13 +314,13 @@ let nonce_hex_le = hex::encode(full_nonce);
 
 fn build_bitcoin_header(job: &MiningJob) -> Vec<u8> {
     let mut header = Vec::with_capacity(80);
-    
+
     if let Some(version) = job.version {
         header.extend_from_slice(&version.to_le_bytes());
     } else {
         header.extend_from_slice(&[0u8, 0, 0, 2]); // Version 2.0.0
     }
-    
+
     if let Some(prev_hash) = &job.prev_hash {
         if prev_hash.len() == 32 {
             let mut swapped = [0u8; 32];
@@ -269,13 +329,13 @@ fn build_bitcoin_header(job: &MiningJob) -> Vec<u8> {
             }
             header.extend_from_slice(&swapped); // Swap to little-endian
         } else {
-            error!("Invalid prev_hash length: {} bytes", prev_hash.len());
+            error!(target: LOG_TARGET,"Invalid prev_hash length: {} bytes", prev_hash.len());
             header.extend_from_slice(&[0u8; 32]);
         }
     } else {
         header.extend_from_slice(&[0u8; 32]);
     }
-    
+
     if let Some(merkle_root) = &job.merkle_root {
         if merkle_root.len() == 32 {
             let mut swapped = [0u8; 32];
@@ -284,31 +344,34 @@ fn build_bitcoin_header(job: &MiningJob) -> Vec<u8> {
             }
             header.extend_from_slice(&swapped); // Swap to little-endian
         } else {
-            error!("Invalid merkle_root length: {} bytes", merkle_root.len());
+            error!(target: LOG_TARGET,"Invalid merkle_root length: {} bytes", merkle_root.len());
             header.extend_from_slice(&[0u8; 32]);
         }
     } else {
         header.extend_from_slice(&[0u8; 32]);
     }
-    
+
     if let Some(ntime) = job.ntime {
         header.extend_from_slice(&ntime.to_le_bytes());
     } else {
         header.extend_from_slice(&[0u8, 0, 0, 0]);
     }
-    
+
     if let Some(nbits) = job.nbits {
         header.extend_from_slice(&nbits.to_le_bytes());
     } else {
         header.extend_from_slice(&[0x3B, 0x43, 0x06, 0x19]); // Default nbits
     }
-    
+
     header.extend_from_slice(&[0u8; 4]); // Nonce placeholder
-    
+
     if header.len() != 80 {
-        error!("Bitcoin header invalid: {} bytes, expected 80", header.len());
+        error!(target: LOG_TARGET,
+            "Bitcoin header invalid: {} bytes, expected 80",
+            header.len()
+        );
     }
-    debug!("Built header: {}", hex::encode(&header));
+    debug!(target: LOG_TARGET,"Built header: {}", hex::encode(&header));
     header
 }
 

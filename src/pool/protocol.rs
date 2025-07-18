@@ -17,9 +17,11 @@
 // - src/pool/protocol.rs (Stratum protocol logic)
 // - Depends on: serde_json, crate::core::types
 
-use serde_json::{json, Value};
 use crate::core::types::Algorithm;
-use tracing::{error, debug};
+use log::{debug, error};
+use serde_json::{Value, json};
+
+const LOG_TARGET: &str = "tari::graxil::pool::protocol";
 
 /// Constructs messages for the Stratum protocol
 pub struct StratumProtocol;
@@ -28,7 +30,7 @@ impl StratumProtocol {
     /// Create a login request message
     pub fn create_login_request(wallet_address: &str, worker_name: &str, algo: Algorithm) -> Value {
         if wallet_address.is_empty() {
-            error!("Invalid wallet address: empty");
+            error!(target: LOG_TARGET,"Invalid wallet address: empty");
             return json!({});
         }
         match algo {
@@ -54,7 +56,7 @@ impl StratumProtocol {
     /// Create an authorization request for SHA-256 (Stratum V1)
     pub fn create_authorize_request(wallet_address: &str) -> Value {
         if wallet_address.is_empty() {
-            error!("Invalid wallet address for authorize: empty");
+            error!(target: LOG_TARGET,"Invalid wallet address for authorize: empty");
             return json!({});
         }
         json!({
@@ -76,8 +78,10 @@ impl StratumProtocol {
         ntime: Option<u32>,
     ) -> Value {
         if job_id.is_empty() || nonce.is_empty() || result.is_empty() {
-            error!("Invalid share submission: job_id={}, nonce={}, result={}", 
-                job_id, nonce, result);
+            error!(target: LOG_TARGET,
+                "Invalid share submission: job_id={}, nonce={}, result={}",
+                job_id, nonce, result
+            );
             return json!({});
         }
         match algo {
@@ -96,8 +100,10 @@ impl StratumProtocol {
                 let extranonce2 = extranonce2.unwrap_or("");
                 let ntime_hex = ntime.map(|n| format!("{:08x}", n)).unwrap_or_default();
                 if extranonce2.is_empty() || ntime_hex.is_empty() {
-                    error!("Invalid SHA-256 share: extranonce2={}, ntime={}", 
-                        extranonce2, ntime_hex);
+                    error!(target: LOG_TARGET,
+                        "Invalid SHA-256 share: extranonce2={}, ntime={}",
+                        extranonce2, ntime_hex
+                    );
                     return json!({});
                 }
                 json!({
@@ -118,10 +124,10 @@ impl StratumProtocol {
     /// Convert a JSON message to a string with newline
     pub fn to_message(json: Value) -> String {
         if json.is_null() {
-            error!("Attempted to serialize empty JSON message");
+            error!(target: LOG_TARGET,"Attempted to serialize empty JSON message");
             return String::new();
         }
-        debug!("Serialized Stratum message: {}", json);
+        debug!(target: LOG_TARGET,"Serialized Stratum message: {}", json);
         format!("{}\n", json)
     }
 }
