@@ -227,6 +227,18 @@ pub struct Args {
     pub test_sv2: bool,
 
     // GPU Control Parameters (available in gpu and hybrid features)
+    /// Exclude specific GPU devices from mining
+    /// Indexes are 0-based (e.g., 0,1,2 for first 3 GPUs)
+    /// Useful for multi-GPU systems where some GPUs are not suitable for mining
+    /// Example: --excluded-devices 0,2 excludes first and third GPUs
+    #[cfg(any(feature = "gpu", feature = "hybrid"))]
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "Indexes of GPUs to exclude from mining (0-based, comma-separated) [e.g., 0,2 excludes first and third GPUs]"
+    )]
+    pub excluded_devices: Option<String>,
+
     /// GPU mining intensity as percentage (0-100%)
     /// Controls overall GPU workload: 100% = maximum performance, 85% = balanced, 70% = power efficient
     /// Lower values reduce power consumption and heat generation
