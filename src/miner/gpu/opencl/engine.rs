@@ -489,7 +489,7 @@ impl OpenClEngine {
         job: &MiningJob,
         nonce_start: u64,
         batch_size: u32,
-    ) -> Result<(Option<u64>, u32, u64)> {
+    ) -> Result<(Option<u64>, u64, u64)> {
         if !self.initialized {
             return Err(Error::msg("Engine not initialized"));
         }
@@ -597,7 +597,7 @@ impl OpenClEngine {
         }
 
         let mining_time = start_time.elapsed();
-        let hashes_processed = global_size as u32 * batch_size;
+        let hashes_processed: u64 = u64::try_from(global_size)? * u64::from(batch_size);
 
         debug!(target: LOG_TARGET,
             "GPU mining completed in {:.2}ms: {} hashes, {:.2} MH/s (intensity: {}%, WG: {})",

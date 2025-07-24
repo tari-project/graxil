@@ -15,7 +15,7 @@
 
 [package]
 name = "sha3x-miner"
-version = "1.0.4"
+version = "1.0.6"
 edition = "2024"
 description = "High-performance SHA3x (Tari) CPU/GPU miner with hybrid mode"
 license = "MIT"
