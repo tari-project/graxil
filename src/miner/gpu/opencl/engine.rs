@@ -461,7 +461,7 @@ impl OpenClEngine {
         let adjusted_work_groups = ((base_work_groups as f32) * intensity_factor) as usize;
         let global_size = (adjusted_work_groups.max(1) * local_size).min(max_work_group_size);
 
-        info!(target: LOG_TARGET,
+        debug!(target: LOG_TARGET,
             "Calculated work sizes for {}: global={}, local={}, intensity={}% (WG: {}/CU)",
             self.device.name(),
             global_size,
