@@ -407,13 +407,15 @@ impl OpenClEngine {
         let mut total_hashes = 0u64;
         let mut iterations = 0u32;
 
-        let batch_size = self.get_suggested_batch_size();
+        // let mut batch_size = self.get_suggested_batch_size();
+        let mut batch_size = 100;
 
         while start_time.elapsed().as_secs() < duration_secs {
             let nonce_start = rand::random::<u64>();
 
             match self.mine(job, nonce_start, batch_size).await {
-                Ok((_, hashes_processed, _)) => {
+                Ok((_, hashes_processed, _, new_batch_size)) => {
+                    batch_size = new_batch_size; // Update batch size based on mining result
                     total_hashes += hashes_processed as u64;
                     iterations += 1;
                 }
@@ -499,7 +501,7 @@ impl OpenClEngine {
         job: &MiningJob,
         nonce_start: u64,
         mut batch_size: u32,
-    ) -> Result<(Option<u64>, u64, u64)> {
+    ) -> Result<(Option<u64>, u64, u64, u32)> {
         if !self.initialized {
             return Err(Error::msg("Engine not initialized"));
         }
@@ -540,7 +542,7 @@ impl OpenClEngine {
             }
         }
 
-        let mut batch_size = 100u32;
+        // let mut batch_size = 100u32;
 
         let start_time = Instant::now();
 
@@ -622,7 +624,13 @@ impl OpenClEngine {
             );
             batch_size = batch_size.saturating_sub(1); // Reduce batch size if too slow
         } else {
-            batch_size = batch_size.saturating_add(100); // Increase batch size if fast
+            if timer.elapsed().as_millis() < 50 {
+                batch_size = batch_size.saturating_add(100); // Increase batch size if fast
+            } else {
+                if timer.elapsed().as_millis() < 75 {
+                    batch_size = batch_size.saturating_add(1); // Moderate increase
+                }
+            }
         }
         // Read results
         let mut output = vec![0u64, 0u64];
@@ -664,7 +672,7 @@ impl OpenClEngine {
             );
         }
 
-        Ok((found_nonce, hashes_processed, best_difficulty))
+        Ok((found_nonce, hashes_processed, best_difficulty, batch_size))
     }
 
     /// Get suggested batch size based on device capabilities and GPU settings

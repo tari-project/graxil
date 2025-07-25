@@ -11,7 +11,7 @@
 use anyhow::{Error, Result};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -339,7 +339,8 @@ impl GpuManager {
             return;
         }
 
-        let batch_size = engine.get_suggested_batch_size();
+        // let batch_size = engine.get_suggested_batch_size();
+        let mut batch_size = 100;
         let mut nonce_offset = thread_id as u64 * 1_000_000_000; // Unique nonce space per GPU
         let mut current_job: Option<MiningJob> = None;
         let mut last_stats_update = std::time::Instant::now();
@@ -370,7 +371,8 @@ impl GpuManager {
             if let Some(ref job) = current_job {
                 // *** CRITICAL FIX: CONTINUOUS MINING - NO SLEEP! ***
                 match engine.mine(job, nonce_offset, batch_size).await {
-                    Ok((found_nonce, hashes_processed, best_difficulty)) => {
+                    Ok((found_nonce, hashes_processed, best_difficulty, new_batch_size)) => {
+                        batch_size = new_batch_size;
                         // Update stats - FIXED to ensure thread_id is valid
                         if thread_id < stats.thread_stats.len() {
                             stats.thread_stats[thread_id].update_hashrate(hashes_processed as u64);
