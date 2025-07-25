@@ -11,7 +11,7 @@
 use anyhow::{Error, Result};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::UnboundedSender;
 

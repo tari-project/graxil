@@ -488,7 +488,7 @@ impl OpenClEngine {
     /// Apply intensity delay if needed (for power/thermal management)
     async fn apply_intensity_delay(&self) {
         if self.gpu_settings.intensity < 100 {
-            let delay_ms = (100 - self.gpu_settings.intensity as u32); // 1s per % reduction
+            let delay_ms = 100 - self.gpu_settings.intensity as u32; // 1s per % reduction
             if delay_ms > 0 {
                 tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
             }
