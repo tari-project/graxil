@@ -617,20 +617,20 @@ impl OpenClEngine {
             .map_err(|e| Error::msg(format!("Failed to finish queue: {}", e)))?;
         debug!(target: LOG_TARGET, "Kernel execution completed for device: {}", self.device.name());
 
-        if timer.elapsed().as_millis() > 100 {
+        let elapsed_time = timer.elapsed().as_millis();
+        let target_time = 75; // Target execution time in milliseconds
+        let adjustment_factor = 0.1; // Proportional adjustment factor
+
+        if elapsed_time > target_time {
             warn!(target: LOG_TARGET,
                 "Kernel execution took too long: {} ms (device: {})",
-                timer.elapsed().as_millis(), self.device.name()
+                elapsed_time, self.device.name()
             );
-            batch_size = batch_size.saturating_sub(1); // Reduce batch size if too slow
-        } else {
-            if timer.elapsed().as_millis() < 50 {
-                batch_size = batch_size.saturating_add(100); // Increase batch size if fast
-            } else {
-                if timer.elapsed().as_millis() < 75 {
-                    batch_size = batch_size.saturating_add(1); // Moderate increase
-                }
-            }
+            let decrease = ((elapsed_time - target_time) as f64 * adjustment_factor) as usize;
+            batch_size = batch_size.saturating_sub(decrease.max(1)); // Reduce batch size proportionally
+        } else if elapsed_time < target_time {
+            let increase = ((target_time - elapsed_time) as f64 * adjustment_factor) as usize;
+            batch_size = batch_size.saturating_add(increase.max(1)); // Increase batch size proportionally
         }
         // Read results
         let mut output = vec![0u64, 0u64];
