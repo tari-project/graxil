@@ -458,15 +458,9 @@ impl OpenClEngine {
         let base_work_groups = compute_units as f32;
 
         // Apply intensity scaling to work groups
-<<<<<<< Updated upstream
-        let intensity_factor = self.gpu_settings.intensity as f32 / 100.0;
-        let adjusted_work_groups = ((base_work_groups as f32) * intensity_factor) as usize;
-        let global_size = (adjusted_work_groups.max(1) * local_size).min(max_work_group_size);
-=======
 
         let adjusted_work_groups = (base_work_groups * intensity_factor) as usize;
         let global_size = adjusted_work_groups.max(1) * local_size;
->>>>>>> Stashed changes
 
         debug!(target: LOG_TARGET,
             "Calculated work sizes for {}: global={}, local={}, intensity={}% (WG: {}/CU)",
