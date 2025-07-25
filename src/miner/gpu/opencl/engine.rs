@@ -413,7 +413,7 @@ impl OpenClEngine {
             let nonce_start = rand::random::<u64>();
 
             match self.mine(job, nonce_start, batch_size).await {
-                Ok((_, hashes_processed, _)) => {
+                Ok((_, hashes_processed, _, _new_batch_size)) => {
                     total_hashes += hashes_processed as u64;
                     iterations += 1;
                 }
@@ -490,7 +490,7 @@ impl OpenClEngine {
         job: &MiningJob,
         nonce_start: u64,
         batch_size: u32,
-    ) -> Result<(Option<u64>, u64, u64)> {
+    ) -> Result<(Option<u64>, u64, u64, u32)> {
         if !self.initialized {
             return Err(Error::msg("Engine not initialized"));
         }
@@ -629,7 +629,31 @@ impl OpenClEngine {
             );
         }
 
-        Ok((found_nonce, hashes_processed, best_difficulty))
+        let mut adjusted_batch_size: u32;
+
+        if mining_time.as_millis() > 100 {
+            warn!(target: LOG_TARGET,
+                "Kernel execution took too long: {} ms (device: {})",
+                mining_time.as_millis(), self.device.name()
+            );
+            adjusted_batch_size = batch_size.saturating_sub(1); // Reduce batch size if too slow
+        } else {
+            adjusted_batch_size = batch_size.saturating_add(100); // Increase batch size if fast
+            if mining_time.as_millis() < 50 {
+                adjusted_batch_size = batch_size.saturating_add(100); // Increase batch size if fast
+            } else {
+                if mining_time.as_millis() < 75 {
+                    adjusted_batch_size = batch_size.saturating_add(1); // Moderate increase
+                }
+            }
+        }
+
+        Ok((
+            found_nonce,
+            hashes_processed,
+            best_difficulty,
+            adjusted_batch_size,
+        ))
     }
 
     /// Get suggested batch size based on device capabilities and GPU settings

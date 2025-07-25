@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         iteration += 1;
 
         match engine.mine(&test_job, nonce_offset, batch_size).await {
-            Ok((found_nonce, hashes_processed, best_difficulty)) => {
+            Ok((found_nonce, hashes_processed, best_difficulty, _)) => {
                 total_hashes += hashes_processed as u64;
 
                 if let Some(nonce) = found_nonce {
@@ -163,7 +163,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(target: LOG_TARGET,"🔧 Testing XN nonce format (simulating LuckyPool):");
     for i in 0..3 {
         match engine.mine(&luckypool_test_job, i * 100000, 1000).await {
-            Ok((found_nonce, hashes_processed, best_difficulty)) => {
+            Ok((found_nonce, hashes_processed, best_difficulty, _)) => {
                 if let Some(nonce) = found_nonce {
                     // This would be formatted with XN in the actual manager
                     info!(target: LOG_TARGET,
