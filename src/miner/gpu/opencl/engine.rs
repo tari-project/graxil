@@ -633,10 +633,6 @@ impl OpenClEngine {
         let mut adjusted_batch_size: u32;
 
         if mining_time.as_millis() > 100 {
-            warn!(target: LOG_TARGET,
-                "Kernel execution took too long: {} ms (device: {})",
-                mining_time.as_millis(), self.device.name()
-            );
             adjusted_batch_size = batch_size.saturating_sub(1); // Reduce batch size if too slow
         } else {
             adjusted_batch_size = batch_size.saturating_add(100); // Increase batch size if fast
@@ -648,6 +644,13 @@ impl OpenClEngine {
                 }
             }
         }
+
+        info!(target: LOG_TARGET,
+            "Adjusted batch size for {}: {} -> {}",
+            self.device.name(),
+            batch_size,
+            adjusted_batch_size
+        );
 
         Ok((
             found_nonce,
