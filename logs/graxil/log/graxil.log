@@ -1,0 +1,86 @@
+2025-07-25 10:31:36.707439209 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:31:36.707468689 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:31:36.707514539 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:252
+2025-07-25 10:31:36.707523279 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:252
+2025-07-25 10:31:36.707539939 INFO  OpenCL device 0 SVM capabilities: 1 // src/miner/gpu/opencl/device.rs:260
+2025-07-25 10:31:36.707549139 INFO  OpenCL device 0 SVM capabilities: 1 // src/miner/gpu/opencl/device.rs:260
+2025-07-25 10:31:36.707582498 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:268
+2025-07-25 10:31:36.707591908 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:268
+2025-07-25 10:31:36.707617438 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:292
+2025-07-25 10:31:36.707626568 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:292
+2025-07-25 10:32:38.127413058 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:32:38.127441347 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:32:38.127490037 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:252
+2025-07-25 10:32:38.127499167 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:252
+2025-07-25 10:32:38.127510637 INFO  OpenCL device 0 SVM capabilities: 1 // src/miner/gpu/opencl/device.rs:260
+2025-07-25 10:32:38.127518757 INFO  OpenCL device 0 SVM capabilities: 1 // src/miner/gpu/opencl/device.rs:260
+2025-07-25 10:32:38.127550677 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:268
+2025-07-25 10:32:38.127559417 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:268
+2025-07-25 10:32:38.127586456 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:292
+2025-07-25 10:32:38.127601586 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:292
+2025-07-25 10:32:51.681463622 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:32:51.681484931 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:32:51.681533671 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:252
+2025-07-25 10:32:51.681543001 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:252
+2025-07-25 10:32:51.681554171 INFO  OpenCL device 0 SVM capabilities: 1 // src/miner/gpu/opencl/device.rs:260
+2025-07-25 10:32:51.681562561 INFO  OpenCL device 0 SVM capabilities: 1 // src/miner/gpu/opencl/device.rs:260
+2025-07-25 10:32:51.681591531 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:268
+2025-07-25 10:32:51.681600101 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:268
+2025-07-25 10:32:51.681624841 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:292
+2025-07-25 10:32:51.681632980 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:292
+2025-07-25 10:33:51.184721242 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:33:51.184748662 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:33:51.184819712 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:254
+2025-07-25 10:33:51.184840981 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:254
+2025-07-25 10:33:51.184871591 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:278
+2025-07-25 10:33:51.184882551 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:278
+2025-07-25 10:35:28.054341199 INFO  🔍 OpenCL GPU Device Type Detection Example // examples/gpu_device_types.rs:22
+2025-07-25 10:35:28.054360079 INFO  🔍 OpenCL GPU Device Type Detection Example // examples/gpu_device_types.rs:22
+2025-07-25 10:35:28.054372069 INFO  ================================================ // examples/gpu_device_types.rs:23
+2025-07-25 10:35:28.054380369 INFO  ================================================ // examples/gpu_device_types.rs:23
+2025-07-25 10:35:28.122660589 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:35:28.122689618 INFO  Found 4 OpenCL platform(s) // src/miner/gpu/opencl/device.rs:230
+2025-07-25 10:35:28.122761208 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:254
+2025-07-25 10:35:28.122775508 INFO  Detected OpenCL device 0: NVIDIA GeForce RTX 4080 SUPER (Platform: NVIDIA CUDA) // src/miner/gpu/opencl/device.rs:254
+2025-07-25 10:35:28.122805108 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:278
+2025-07-25 10:35:28.122817678 INFO  Successfully detected 1 OpenCL GPU device(s) // src/miner/gpu/opencl/device.rs:278
+2025-07-25 10:35:28.122831448 INFO  Found 1 OpenCL GPU device(s): // examples/gpu_device_types.rs:33
+2025-07-25 10:35:28.122843108 INFO  Found 1 OpenCL GPU device(s): // examples/gpu_device_types.rs:33
+2025-07-25 10:35:28.122855547 INFO   // examples/gpu_device_types.rs:34
+2025-07-25 10:35:28.122867147 INFO   // examples/gpu_device_types.rs:34
+2025-07-25 10:35:28.122880817 INFO  🎮 Device 0: NVIDIA GeForce RTX 4080 SUPER (Dedicated GPU) // examples/gpu_device_types.rs:43
+2025-07-25 10:35:28.122892877 INFO  🎮 Device 0: NVIDIA GeForce RTX 4080 SUPER (Dedicated GPU) // examples/gpu_device_types.rs:43
+2025-07-25 10:35:28.122905807 INFO     Platform: NVIDIA CUDA // examples/gpu_device_types.rs:53
+2025-07-25 10:35:28.122917337 INFO     Platform: NVIDIA CUDA // examples/gpu_device_types.rs:53
+2025-07-25 10:35:28.122929837 INFO     Compute Units: 80 // examples/gpu_device_types.rs:54
+2025-07-25 10:35:28.122941197 INFO     Compute Units: 80 // examples/gpu_device_types.rs:54
+2025-07-25 10:35:28.122953847 INFO     Work Group Size: 1024 // examples/gpu_device_types.rs:55
+2025-07-25 10:35:28.122965577 INFO     Work Group Size: 1024 // examples/gpu_device_types.rs:55
+2025-07-25 10:35:28.122978907 INFO     Global Memory: 15.53 GB // examples/gpu_device_types.rs:56
+2025-07-25 10:35:28.122990887 INFO     Global Memory: 15.53 GB // examples/gpu_device_types.rs:56
+2025-07-25 10:35:28.123003796 INFO     Type: Dedicated // examples/gpu_device_types.rs:58
+2025-07-25 10:35:28.123015296 INFO     Type: Dedicated // examples/gpu_device_types.rs:58
+2025-07-25 10:35:28.123028416 INFO     Host Unified Memory: false // examples/gpu_device_types.rs:64
+2025-07-25 10:35:28.123039826 INFO     Host Unified Memory: false // examples/gpu_device_types.rs:64
+2025-07-25 10:35:28.123052566 INFO     NVIDIA Integrated Memory: false // examples/gpu_device_types.rs:68
+2025-07-25 10:35:28.123063826 INFO     NVIDIA Integrated Memory: false // examples/gpu_device_types.rs:68
+2025-07-25 10:35:28.123077836 INFO     Vendor: NVIDIA Corporation // examples/gpu_device_types.rs:72
+2025-07-25 10:35:28.123089336 INFO     Vendor: NVIDIA Corporation // examples/gpu_device_types.rs:72
+2025-07-25 10:35:28.123105376 INFO     Full Info: NVIDIA GeForce RTX 4080 SUPER (CU: 80, WG: 1024, MEM: 15.5 GB, Type: Dedicated) // examples/gpu_device_types.rs:75
+2025-07-25 10:35:28.123118686 INFO     Full Info: NVIDIA GeForce RTX 4080 SUPER (CU: 80, WG: 1024, MEM: 15.5 GB, Type: Dedicated) // examples/gpu_device_types.rs:75
+2025-07-25 10:35:28.123185925 INFO   // examples/gpu_device_types.rs:76
+2025-07-25 10:35:28.123200015 INFO   // examples/gpu_device_types.rs:76
+2025-07-25 10:35:28.123212705 INFO  📊 Device Type Summary: // examples/gpu_device_types.rs:93
+2025-07-25 10:35:28.123221895 INFO  📊 Device Type Summary: // examples/gpu_device_types.rs:93
+2025-07-25 10:35:28.123231865 INFO     🔗 Integrated GPUs: 0 // examples/gpu_device_types.rs:94
+2025-07-25 10:35:28.123246655 INFO     🔗 Integrated GPUs: 0 // examples/gpu_device_types.rs:94
+2025-07-25 10:35:28.123260715 INFO     🎮 Dedicated GPUs: 1 // examples/gpu_device_types.rs:95
+2025-07-25 10:35:28.123269525 INFO     🎮 Dedicated GPUs: 1 // examples/gpu_device_types.rs:95
+2025-07-25 10:35:28.123279225 INFO     ❓ Unknown Type: 0 // examples/gpu_device_types.rs:96
+2025-07-25 10:35:28.123287865 INFO     ❓ Unknown Type: 0 // examples/gpu_device_types.rs:96
+2025-07-25 10:35:28.123297445 INFO   // examples/gpu_device_types.rs:99
+2025-07-25 10:35:28.123305965 INFO   // examples/gpu_device_types.rs:99
+2025-07-25 10:35:28.123315695 INFO  💡 Mining Recommendations: // examples/gpu_device_types.rs:100
+2025-07-25 10:35:28.123324364 INFO  💡 Mining Recommendations: // examples/gpu_device_types.rs:100
+2025-07-25 10:35:28.123335004 INFO     Device 0: ✅ Excellent for mining (dedicated GPU with good memory) // examples/gpu_device_types.rs:116
+2025-07-25 10:35:28.123348984 INFO     Device 0: ✅ Excellent for mining (dedicated GPU with good memory) // examples/gpu_device_types.rs:116

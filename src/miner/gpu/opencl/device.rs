@@ -249,20 +249,6 @@ impl OpenClDevice {
                     for device_cl_id in devices {
                         let device = Device::new(device_cl_id);
 
-                        info!(target: LOG_TARGET,
-                            "Detected OpenCL device {}: {} (Platform: {})",
-                            device_counter,
-                            device.name().unwrap_or_else(|_| "Unknown Device".to_string()),
-                            platform_name
-                        );
-
-                        device.svm_mem_capability();
-                        info!(target: LOG_TARGET,
-                            "OpenCL device {} SVM capabilities: {:?}",
-                            device_counter,
-                            device.svm_mem_capability()
-                        );
-
                         match OpenClDevice::new(device, device_counter, platform_name.clone()) {
                             Ok(opencl_device) => {
                                 info!(target: LOG_TARGET,

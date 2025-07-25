@@ -1,12 +1,24 @@
 // Example showing OpenCL GPU device type detection (integrated vs dedicated)
 
+use std::path::PathBuf;
+
 use log::info;
 use sha3x_miner::miner::gpu::opencl::device::{GpuDeviceType, OpenClDevice};
 
-const LOG_TARGET: &str = "gpu_device_example";
+const LOG_TARGET: &str = "tari::graxil::gpu_device_example";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mock_logs_directory =
+        PathBuf::from(std::env::var("MOCK_LOGS_DIRECTORY").unwrap_or_else(|_| "logs".to_string()));
+
+    tari_common::initialize_logging(
+        &mock_logs_directory.join("graxil").join("log4rs_config.yml"),
+        &mock_logs_directory.join("graxil"),
+        include_str!("../log4rs_sample.yml"),
+    )
+    .expect("Could not set up logging");
+
     info!(target: LOG_TARGET, "🔍 OpenCL GPU Device Type Detection Example");
     info!(target: LOG_TARGET, "================================================");
 
