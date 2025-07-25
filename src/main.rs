@@ -15,7 +15,6 @@ use sha3x_miner::{
     core::types::{Algorithm, Args},
     miner::CpuMiner,
 };
-use std::sync::Arc;
 
 // Web server module for real-time mining dashboard
 mod web_server;

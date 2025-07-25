@@ -36,11 +36,10 @@ root:
   level: warn
   appenders:
     - stdout
-    - graxil
 
 loggers:
   tari:
-    level: info
+    level: debug
     appenders:
-      - stdout
+      # - stdout
       - graxil
