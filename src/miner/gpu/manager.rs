@@ -374,8 +374,8 @@ impl GpuManager {
             if let Some(ref job) = current_job {
                 // *** CRITICAL FIX: CONTINUOUS MINING - NO SLEEP! ***
                 match engine.mine(job, nonce_offset, batch_size).await {
-                    Ok((found_nonce, hashes_processed, best_difficulty, _adjusted_batch_size)) => {
-                        batch_size = _adjusted_batch_size; // Update batch size if adjusted
+                    Ok((found_nonce, hashes_processed, best_difficulty, adjusted_batch_size)) => {
+                        batch_size = adjusted_batch_size; // Update batch size if adjusted
                         // Update stats - FIXED to ensure thread_id is valid
                         if thread_id < stats.thread_stats.len() {
                             stats.thread_stats[thread_id].update_hashrate(hashes_processed as u64);

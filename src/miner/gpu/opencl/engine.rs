@@ -407,13 +407,14 @@ impl OpenClEngine {
         let mut total_hashes = 0u64;
         let mut iterations = 0u32;
 
-        let batch_size = self.get_suggested_batch_size();
+        let mut batch_size = self.get_suggested_batch_size();
 
         while start_time.elapsed().as_secs() < duration_secs {
             let nonce_start = rand::random::<u64>();
 
             match self.mine(job, nonce_start, batch_size).await {
-                Ok((_, hashes_processed, _, _new_batch_size)) => {
+                Ok((_, hashes_processed, _, new_batch_size)) => {
+                    batch_size = new_batch_size; // Update batch size for next iteration
                     total_hashes += hashes_processed as u64;
                     iterations += 1;
                 }
