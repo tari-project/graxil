@@ -18,7 +18,7 @@ use opencl3::{
     program::Program,
     types::{CL_FALSE, CL_TRUE, cl_ulong},
 };
-use std::{ptr, time::Instant};
+use std::{ops::Mul, ptr, time::Instant};
 use tokio::time::Duration;
 
 const LOG_TARGET: &str = "tari::graxil::engine";
@@ -447,19 +447,26 @@ impl OpenClEngine {
 
     /// Calculate optimal work sizes for mining with intensity consideration and tunable work groups
     fn calculate_work_sizes(&self) -> (usize, usize) {
-        let compute_units = self.device.max_compute_units() as usize;
-        let max_work_group_size = self.device.max_work_group_size();
+        let compute_units = self.device.max_compute_units();
+        let max_work_group_size = self.device.max_work_group_size() as f32;
+        let intensity_factor = f32::from(self.gpu_settings.intensity) / 100.0;
 
         // Calculate optimal local work size (threads per work group)
-        let local_size = (max_work_group_size / 4).max(64).min(256);
+        let local_size = (max_work_group_size * intensity_factor) as usize;
 
         // Use the tunable work_groups_per_cu value
-        let base_work_groups = compute_units * self.work_groups_per_cu;
+        let base_work_groups = compute_units as f32;
 
         // Apply intensity scaling to work groups
+<<<<<<< Updated upstream
         let intensity_factor = self.gpu_settings.intensity as f32 / 100.0;
         let adjusted_work_groups = ((base_work_groups as f32) * intensity_factor) as usize;
         let global_size = (adjusted_work_groups.max(1) * local_size).min(max_work_group_size);
+=======
+
+        let adjusted_work_groups = (base_work_groups * intensity_factor) as usize;
+        let global_size = adjusted_work_groups.max(1) * local_size;
+>>>>>>> Stashed changes
 
         debug!(target: LOG_TARGET,
             "Calculated work sizes for {}: global={}, local={}, intensity={}% (WG: {}/CU)",
@@ -476,7 +483,7 @@ impl OpenClEngine {
     /// Apply intensity delay if needed (for power/thermal management)
     async fn apply_intensity_delay(&self) {
         if self.gpu_settings.intensity < 100 {
-            let delay_ms = (100 - self.gpu_settings.intensity as u32) / 2; // 0.5ms per % reduction
+            let delay_ms = (100 - self.gpu_settings.intensity as u32) * 10; // 10ms per % reduction
             if delay_ms > 0 {
                 tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
             }
@@ -495,7 +502,7 @@ impl OpenClEngine {
         }
 
         // Apply intensity delay for power/thermal management
-        self.apply_intensity_delay().await;
+        // self.apply_intensity_delay().await;
 
         let kernel = self.kernel.as_ref().unwrap();
         let queue = self.queue.as_ref().unwrap();
@@ -526,8 +533,6 @@ impl OpenClEngine {
             }
         }
 
-        let start_time = Instant::now();
-
         // Create input buffer
         let mut input_buffer = unsafe {
             Buffer::<cl_ulong>::create(
@@ -547,7 +552,7 @@ impl OpenClEngine {
         }
 
         // Create output buffer [nonce, best_hash]
-        let initial_output = vec![0u64, 0u64];
+        let initial_output = vec![0u64, 0u64]; // [found_nonce, best_hash]
         let output_buffer = unsafe {
             Buffer::<cl_ulong>::create(
                 &self.context,
@@ -569,6 +574,8 @@ impl OpenClEngine {
         } else {
             u64::MAX
         };
+
+        let start_time = Instant::now();
 
         // Execute kernel
         unsafe {
@@ -646,10 +653,11 @@ impl OpenClEngine {
         }
 
         // Apply intensity scaling to batch size
-        let intensity_factor = self.gpu_settings.intensity as f32 / 100.0;
-        let adjusted_batch = ((base_batch as f32) * intensity_factor) as u32;
+        let intensity_factor: i32 = 100 - self.gpu_settings.intensity as i32; // 100 - intensity% for scaling
+        let adjusted_batch = base_batch as u32 / intensity_factor.max(1) as u32;
 
-        let final_batch = adjusted_batch.max(1_000).min(500_000); // Increased max from 100K to 500K
+        // let final_batch = adjusted_batch.max(1_000).min(500_000); // Increased max from 100K to 500K
+        let final_batch = adjusted_batch.max(10).min(500_000);
 
         debug!(target: LOG_TARGET,
             "Calculated batch size for {}: base={}, intensity={}%, final={}",
@@ -668,11 +676,12 @@ impl OpenClEngine {
         let memory_gb = self.device.global_mem_size() as f64 / (1024.0 * 1024.0 * 1024.0);
 
         // Enhanced batch size calculation for better performance
-        let memory_based = (memory_gb * 50_000.0) as u32; // 50K per GB (increased from 1K)
-        let cu_based = compute_units * 10_000; // 10K per CU (increased from 1K)
+        let memory_based = memory_gb as u32; // 5K per GB (decreased from 50K)
+        let cu_based = compute_units; // 1K per CU (decreased from 10K)
 
         // Use the smaller of the two, but with higher minimums
-        let base_batch = memory_based.min(cu_based).max(50_000); // Minimum 50K
+        // let base_batch = memory_based.min(cu_based).max(50_000); // Minimum 50K
+        let base_batch = memory_based.mul(cu_based);
 
         debug!(target: LOG_TARGET,
             "Base batch calculation for {}: memory_based={}, cu_based={}, final={}",

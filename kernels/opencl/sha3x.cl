@@ -191,6 +191,7 @@ kernel void sha3(global ulong *header_buffer, ulong nonce_start, ulong target_va
         }
         
         // Check if hash meets target (lower hash = higher difficulty)
+
         if (hash_value <= target_value) {
             // Found valid share!
             atomic_min_u64(&output[1], hash_value);
