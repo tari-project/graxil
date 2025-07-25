@@ -101,7 +101,7 @@ impl OpenClEngine {
     /// Enable sequential autotuning with configuration
     pub fn enable_autotuning(&mut self, config: AutotuneConfig) {
         info!(target: LOG_TARGET,
-            "🎯 Autotuning enabled: {} cycle(s), {}s test duration",
+            ":dart: Autotuning enabled: {} cycle(s), {}s test duration",
             config.cycles, config.test_duration_secs
         );
         self.autotune_config = Some(config);
@@ -134,7 +134,7 @@ impl OpenClEngine {
 
         // Display GPU settings being applied
         info!(target: LOG_TARGET,
-            "🎮 GPU Settings: Intensity={}%, Batch={:?}, Power={:?}%, Temp={:?}°C",
+            ":video_game: GPU Settings: Intensity={}%, Batch={:?}, Power={:?}%, Temp={:?}°C",
             self.gpu_settings.intensity,
             self.gpu_settings.batch_size,
             self.gpu_settings.power_limit,
@@ -181,7 +181,7 @@ impl OpenClEngine {
         self.initialized = true;
 
         info!(target: LOG_TARGET,
-            "✅ OpenCL engine initialized for {} (CU: {}, WG: {})",
+            ":white_check_mark: OpenCL engine initialized for {} (CU: {}, WG: {})",
             self.device.name(),
             self.device.max_compute_units(),
             self.device.max_work_group_size()
@@ -202,11 +202,11 @@ impl OpenClEngine {
             .ok_or_else(|| Error::msg("Autotuning not enabled"))?;
 
         info!(target: LOG_TARGET,
-            "🚀 Starting sequential autotuning with {} cycle(s)",
+            ":rocket: Starting sequential autotuning with {} cycle(s)",
             config.cycles
         );
         info!(target: LOG_TARGET,
-            "📊 Baseline: intensity={}%, batch={:?}, work_groups={}",
+            ":bar_chart: Baseline: intensity={}%, batch={:?}, work_groups={}",
             self.gpu_settings.intensity, self.gpu_settings.batch_size, self.work_groups_per_cu
         );
 
@@ -217,14 +217,14 @@ impl OpenClEngine {
         let baseline_hashrate = self
             .measure_hashrate(test_job, config.test_duration_secs)
             .await?;
-        info!(target: LOG_TARGET,"📈 Baseline hashrate: {:.1} MH/s", baseline_hashrate);
+        info!(target: LOG_TARGET,":chart_with_upwards_trend: Baseline hashrate: {:.1} MH/s", baseline_hashrate);
 
         for cycle in 1..=config.cycles {
-            info!(target: LOG_TARGET,"🔄 Starting optimization cycle {}/{}", cycle, config.cycles);
+            info!(target: LOG_TARGET,":arrows_counterclockwise: Starting optimization cycle {}/{}", cycle, config.cycles);
 
             // Phase 1: Fix nothing → Tune intensity (keep batch and work_groups fixed)
             info!(target: LOG_TARGET,
-                "🔧 Phase 1: Optimizing intensity (batch={:?}, work_groups={} fixed)",
+                ":wrench: Phase 1: Optimizing intensity (batch={:?}, work_groups={} fixed)",
                 best_settings.batch_size, best_work_groups
             );
             let optimal_intensity = self
@@ -232,13 +232,13 @@ impl OpenClEngine {
                 .await?;
             best_settings.intensity = optimal_intensity;
             info!(target: LOG_TARGET,
-                "✅ Phase 1 complete: optimal intensity = {}%",
+                ":white_check_mark: Phase 1 complete: optimal intensity = {}%",
                 optimal_intensity
             );
 
             // Phase 2: Fix intensity → Tune batch_size (keep work_groups fixed)
             info!(target: LOG_TARGET,
-                "🔧 Phase 2: Optimizing batch size (intensity={}%, work_groups={} fixed)",
+                ":wrench: Phase 2: Optimizing batch size (intensity={}%, work_groups={} fixed)",
                 best_settings.intensity, best_work_groups
             );
             let optimal_batch = self
@@ -246,13 +246,13 @@ impl OpenClEngine {
                 .await?;
             best_settings.batch_size = Some(optimal_batch);
             info!(target: LOG_TARGET,
-                "✅ Phase 2 complete: optimal batch size = {}",
+                ":white_check_mark: Phase 2 complete: optimal batch size = {}",
                 optimal_batch
             );
 
             // Phase 3: Fix intensity and batch → Tune work_groups
             info!(target: LOG_TARGET,
-                "🔧 Phase 3: Optimizing work groups (intensity={}%, batch={} fixed)",
+                ":wrench: Phase 3: Optimizing work groups (intensity={}%, batch={} fixed)",
                 best_settings.intensity, optimal_batch
             );
             let optimal_wg = self
@@ -260,7 +260,7 @@ impl OpenClEngine {
                 .await?;
             best_work_groups = optimal_wg;
             self.work_groups_per_cu = optimal_wg;
-            info!(target: LOG_TARGET,"✅ Phase 3 complete: optimal work_groups = {}", optimal_wg);
+            info!(target: LOG_TARGET,":white_check_mark: Phase 3 complete: optimal work_groups = {}", optimal_wg);
 
             // Measure final performance for this cycle
             self.gpu_settings = best_settings.clone();
@@ -270,7 +270,7 @@ impl OpenClEngine {
             let improvement = ((cycle_hashrate - baseline_hashrate) / baseline_hashrate) * 100.0;
 
             info!(target: LOG_TARGET,
-                "📈 Cycle {} results: {:.1} MH/s ({:+.1}% vs baseline)",
+                ":chart_with_upwards_trend: Cycle {} results: {:.1} MH/s ({:+.1}% vs baseline)",
                 cycle, cycle_hashrate, improvement
             );
         }
@@ -284,7 +284,7 @@ impl OpenClEngine {
             .await?;
         let total_improvement = ((final_hashrate - baseline_hashrate) / baseline_hashrate) * 100.0;
 
-        info!(target: LOG_TARGET,"🏆 AUTOTUNING COMPLETE!");
+        info!(target: LOG_TARGET,":trophy: AUTOTUNING COMPLETE!");
         info!(target: LOG_TARGET,"├─ Baseline: {:.1} MH/s", baseline_hashrate);
         info!(target: LOG_TARGET,"├─ Optimized: {:.1} MH/s", final_hashrate);
         info!(target: LOG_TARGET,"├─ Improvement: {:+.1}%", total_improvement);
@@ -319,7 +319,7 @@ impl OpenClEngine {
             let hashrate = self
                 .measure_hashrate(job, config.test_duration_secs)
                 .await?;
-            info!(target: LOG_TARGET,"  📊 intensity={}%: {:.1} MH/s", intensity, hashrate);
+            info!(target: LOG_TARGET,"  :bar_chart: intensity={}%: {:.1} MH/s", intensity, hashrate);
 
             if hashrate > best_hashrate {
                 best_hashrate = hashrate;
@@ -328,7 +328,7 @@ impl OpenClEngine {
         }
 
         info!(target: LOG_TARGET,
-            "🎯 Best intensity: {}% ({:.1} MH/s)",
+            ":dart: Best intensity: {}% ({:.1} MH/s)",
             best_intensity, best_hashrate
         );
         Ok(best_intensity)
@@ -354,7 +354,7 @@ impl OpenClEngine {
             let hashrate = self
                 .measure_hashrate(job, config.test_duration_secs)
                 .await?;
-            info!(target: LOG_TARGET,"  📊 batch={}: {:.1} MH/s", batch_size, hashrate);
+            info!(target: LOG_TARGET,"  :bar_chart: batch={}: {:.1} MH/s", batch_size, hashrate);
 
             if hashrate > best_hashrate {
                 best_hashrate = hashrate;
@@ -363,7 +363,7 @@ impl OpenClEngine {
         }
 
         info!(target: LOG_TARGET,
-            "🎯 Best batch size: {} ({:.1} MH/s)",
+            ":dart: Best batch size: {} ({:.1} MH/s)",
             best_batch, best_hashrate
         );
         Ok(best_batch)
@@ -386,7 +386,7 @@ impl OpenClEngine {
             let hashrate = self
                 .measure_hashrate(job, config.test_duration_secs)
                 .await?;
-            info!(target: LOG_TARGET,"  📊 work_groups={}: {:.1} MH/s", work_groups, hashrate);
+            info!(target: LOG_TARGET,"  :bar_chart: work_groups={}: {:.1} MH/s", work_groups, hashrate);
 
             if hashrate > best_hashrate {
                 best_hashrate = hashrate;
@@ -395,7 +395,7 @@ impl OpenClEngine {
         }
 
         info!(target: LOG_TARGET,
-            "🎯 Best work groups: {} ({:.1} MH/s)",
+            ":dart: Best work groups: {} ({:.1} MH/s)",
             best_wg, best_hashrate
         );
         Ok(best_wg)
@@ -571,18 +571,29 @@ impl OpenClEngine {
         };
 
         let start_time = Instant::now();
-
+        let mut adjusted_batch_size = batch_size;
         // Execute kernel
         unsafe {
-            ExecuteKernel::new(kernel)
+            let result = ExecuteKernel::new(kernel)
                 .set_arg(&input_buffer)
                 .set_arg(&nonce_start)
                 .set_arg(&target_value) // Pass target value, not difficulty
                 .set_arg(&batch_size)
                 .set_arg(&output_buffer)
                 .set_global_work_size(global_size)
-                .enqueue_nd_range(queue)
-                .map_err(|e| Error::msg(format!("Failed to execute kernel: {}", e)))?;
+                .enqueue_nd_range(queue);
+            if let Err(e) = result {
+                error!(target: LOG_TARGET,
+                    "Failed to enqueue kernel: {}. Retrying with adjusted batch size.",
+                    e
+                );
+                return Ok((
+                    None,
+                    0,
+                    0,
+                    batch_size / 2, // Return adjusted batch size
+                ));
+            }
         }
 
         // Wait for completion
@@ -622,7 +633,7 @@ impl OpenClEngine {
 
         if let Some(nonce) = found_nonce {
             info!(target: LOG_TARGET,
-                "🎉 GPU found share! Nonce: {}, Difficulty: {} (intensity: {}%, WG: {})",
+                ":tada: GPU found share! Nonce: {}, Difficulty: {} (intensity: {}%, WG: {})",
                 nonce,
                 crate::miner::stats::MinerStats::format_number(best_difficulty),
                 self.gpu_settings.intensity,
@@ -630,20 +641,34 @@ impl OpenClEngine {
             );
         }
 
-        let mut adjusted_batch_size: u32;
-
-        if mining_time.as_millis() > 100 {
+        if mining_time.as_millis() > 10000 {
+            adjusted_batch_size = batch_size.saturating_sub(1000); // Reduce batch size if too slow
+        } else if mining_time.as_millis() > 1000 {
+            adjusted_batch_size = batch_size.saturating_sub(100); // Reduce batch size if too slow
+        } else if mining_time.as_millis() > 100 {
             adjusted_batch_size = batch_size.saturating_sub(1); // Reduce batch size if too slow
-        } else {
+        } else if mining_time.as_millis() < 50 {
             adjusted_batch_size = batch_size.saturating_add(100); // Increase batch size if fast
-            if mining_time.as_millis() < 50 {
-                adjusted_batch_size = batch_size.saturating_add(100); // Increase batch size if fast
-            } else {
-                if mining_time.as_millis() < 75 {
-                    adjusted_batch_size = batch_size.saturating_add(1); // Moderate increase
-                }
-            }
+        } else if mining_time.as_millis() < 75 && mining_time.as_millis() <= 100 {
+            adjusted_batch_size = batch_size.saturating_add(1); // Moderate increase
         }
+
+        // if mining_time.as_millis() > 10000 {
+        //     adjusted_batch_size = batch_size.saturating_sub(1000);
+        // };
+
+        // if mining_time.as_millis() > 100 {
+        //     adjusted_batch_size = batch_size.saturating_sub(1); // Reduce batch size if too slow
+        // } else {
+        //     adjusted_batch_size = batch_size.saturating_add(100); // Increase batch size if fast
+        //     if mining_time.as_millis() < 50 {
+        //         adjusted_batch_size = batch_size.saturating_add(100); // Increase batch size if fast
+        //     } else {
+        //         if mining_time.as_millis() < 75 {
+        //             adjusted_batch_size = batch_size.saturating_add(1); // Moderate increase
+        //         }
+        //     }
+        // }
 
         info!(target: LOG_TARGET,
             "Adjusted batch size for {}: {} -> {}",
@@ -668,7 +693,7 @@ impl OpenClEngine {
         // Apply user override if specified
         if let Some(override_batch) = self.gpu_settings.batch_size {
             info!(target: LOG_TARGET,
-                "🎮 Using override batch size: {} (was: {})",
+                ":video_game: Using override batch size: {} (was: {})",
                 override_batch, base_batch
             );
             return override_batch.max(1_000).min(1_000_000); // Safety clamps
