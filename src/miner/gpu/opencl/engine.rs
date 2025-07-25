@@ -451,23 +451,33 @@ impl OpenClEngine {
         let max_work_group_size = self.device.max_work_group_size();
 
         // Calculate optimal local work size (threads per work group)
-        let local_size = (max_work_group_size / 4).max(64).min(256);
+        // let local_size = (max_work_group_size / 4)
+        // .max(64)
+        // .min(256)
+        // .min(max_work_group_size);
+        let local_size = max_work_group_size.max(64).min(256);
 
         // Use the tunable work_groups_per_cu value
-        let base_work_groups = compute_units * self.work_groups_per_cu;
+        // let base_work_groups = compute_units * self.work_groups_per_cu;
+        let base_work_groups = compute_units;
 
         // Apply intensity scaling to work groups
-        let intensity_factor = self.gpu_settings.intensity as f32 / 100.0;
-        let adjusted_work_groups = ((base_work_groups as f32) * intensity_factor) as usize;
-        let global_size = (adjusted_work_groups.max(1) * local_size).min(max_work_group_size);
+        // let intensity_factor = self.gpu_settings.intensity as f32 / 100.0;
+        // let adjusted_work_groups = ((base_work_groups as f32) * intensity_factor) as usize;
+        // let global_size = (adjusted_work_groups.max(1) * local_size).min(max_work_group_size);
+        let global_size = base_work_groups * max_work_group_size;
+        // let global_size = local_size;
+        // let global_size = (adjusted_work_groups.max(1) * local_size);
 
         debug!(target: LOG_TARGET,
-            "Calculated work sizes for {}: global={}, local={}, intensity={}% (WG: {}/CU)",
+            "Calculated work sizes for {}: cu={} global={}, local={}, intensity={}%, max={} (WG: {}/CU)",
             self.device.name(),
+            compute_units,
             global_size,
             local_size,
             self.gpu_settings.intensity,
-            self.work_groups_per_cu
+            max_work_group_size,
+            self.work_groups_per_cu,
         );
 
         (global_size, local_size)
@@ -488,12 +498,16 @@ impl OpenClEngine {
         &self,
         job: &MiningJob,
         nonce_start: u64,
-        batch_size: u32,
+        mut batch_size: u32,
     ) -> Result<(Option<u64>, u64, u64)> {
         if !self.initialized {
             return Err(Error::msg("Engine not initialized"));
         }
 
+        debug!(target: LOG_TARGET,
+            "Starting GPU mining for job: {} with nonce_start={}, batch_size={}",
+            job.job_id, nonce_start, batch_size
+        );
         // Apply intensity delay for power/thermal management
         self.apply_intensity_delay().await;
 
@@ -525,6 +539,8 @@ impl OpenClEngine {
                 ]);
             }
         }
+
+        let mut batch_size = 100u32;
 
         let start_time = Instant::now();
 
@@ -559,7 +575,7 @@ impl OpenClEngine {
         };
 
         // Calculate work sizes with intensity and tunable work groups applied
-        let (global_size, _local_size) = self.calculate_work_sizes();
+        let (global_size, local_size) = self.calculate_work_sizes();
 
         // Calculate the target value for the kernel (not difficulty)
         let target_value = if job.target_difficulty > 0 {
@@ -569,7 +585,11 @@ impl OpenClEngine {
         } else {
             u64::MAX
         };
+        debug!(target: LOG_TARGET, "Queuing kernel on device: {} with target value: {}",
+            self.device.name(), target_value
+        );
 
+        let timer = Instant::now();
         // Execute kernel
         unsafe {
             ExecuteKernel::new(kernel)
@@ -579,15 +599,31 @@ impl OpenClEngine {
                 .set_arg(&batch_size)
                 .set_arg(&output_buffer)
                 .set_global_work_size(global_size)
+                .set_local_work_size(local_size)
                 .enqueue_nd_range(queue)
                 .map_err(|e| Error::msg(format!("Failed to execute kernel: {}", e)))?;
         }
+
+        debug!(target: LOG_TARGET,
+            "Kernel queued: global_size={}, batch_size={}, target_value={} device={}",
+            global_size, batch_size, target_value, self.device.name()
+        );
 
         // Wait for completion
         queue
             .finish()
             .map_err(|e| Error::msg(format!("Failed to finish queue: {}", e)))?;
+        debug!(target: LOG_TARGET, "Kernel execution completed for device: {}", self.device.name());
 
+        if timer.elapsed().as_millis() > 100 {
+            warn!(target: LOG_TARGET,
+                "Kernel execution took too long: {} ms (device: {})",
+                timer.elapsed().as_millis(), self.device.name()
+            );
+            batch_size = batch_size.saturating_sub(1); // Reduce batch size if too slow
+        } else {
+            batch_size = batch_size.saturating_add(100); // Increase batch size if fast
+        }
         // Read results
         let mut output = vec![0u64, 0u64];
         unsafe {
