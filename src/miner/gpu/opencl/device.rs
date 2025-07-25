@@ -13,6 +13,14 @@ use opencl3::{
     platform::get_platforms,
 };
 const LOG_TARGET: &str = "tari::graxil::device";
+/// GPU device type classification
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpuDeviceType {
+    Integrated,
+    Dedicated,
+    Unknown,
+}
+
 /// OpenCL device information
 #[derive(Debug, Clone)]
 pub struct OpenClDevice {
@@ -22,6 +30,7 @@ pub struct OpenClDevice {
     pub max_work_group_size: usize,
     pub max_compute_units: u32,
     pub global_mem_size: u64,
+    pub device_type: GpuDeviceType,
     pub device: Device,
 }
 
@@ -35,9 +44,12 @@ impl OpenClDevice {
         let max_compute_units = device.max_compute_units().unwrap_or(1);
         let global_mem_size = device.global_mem_size().unwrap_or(0);
 
+        // Determine device type (integrated vs dedicated)
+        let device_type = Self::detect_device_type(&device, &name, global_mem_size);
+
         debug!(target: LOG_TARGET,
-            "Created OpenCL device: {} (CU: {}, WG: {})",
-            name, max_compute_units, max_work_group_size
+            "Created OpenCL device: {} (CU: {}, WG: {}, Type: {:?})",
+            name, max_compute_units, max_work_group_size, device_type
         );
 
         Ok(Self {
@@ -47,8 +59,118 @@ impl OpenClDevice {
             max_work_group_size,
             max_compute_units,
             global_mem_size,
+            device_type,
             device,
         })
+    }
+
+    /// Detect if GPU device is integrated or dedicated
+    fn detect_device_type(device: &Device, name: &str, global_mem_size: u64) -> GpuDeviceType {
+        // Method 1: Check host unified memory (most reliable)
+        if let Ok(host_unified) = device.host_unified_memory() {
+            if host_unified {
+                debug!(target: LOG_TARGET,
+                    "Device {} detected as integrated (host unified memory)",
+                    name
+                );
+                return GpuDeviceType::Integrated;
+            }
+        }
+
+        // Method 2: NVIDIA-specific integrated memory check
+        if let Ok(integrated_nv) = device.integrated_memory_nv() {
+            if integrated_nv != 0 {
+                debug!(target: LOG_TARGET,
+                    "Device {} detected as integrated (NVIDIA integrated memory)",
+                    name
+                );
+                return GpuDeviceType::Integrated;
+            }
+        }
+
+        // Method 3: Memory size heuristics
+        // Integrated GPUs typically have smaller memory allocations
+        // or share system memory (usually < 2GB dedicated)
+        let mem_gb = global_mem_size as f64 / (1024.0 * 1024.0 * 1024.0);
+        if mem_gb < 2.0 && mem_gb > 0.0 {
+            debug!(target: LOG_TARGET,
+                "Device {} likely integrated (small memory size: {:.1} GB)",
+                name, mem_gb
+            );
+            return GpuDeviceType::Integrated;
+        }
+
+        // Method 4: Device name pattern matching
+        let name_lower = name.to_lowercase();
+
+        // Common integrated GPU patterns
+        let integrated_patterns = [
+            "intel hd graphics",
+            "intel uhd graphics",
+            "intel iris",
+            "intel arc", // Some Intel Arc are integrated
+            "amd radeon vega",
+            "amd radeon graphics", // APU graphics
+            "apple m1",
+            "apple m2",
+            "apple m3",
+            "mali",
+            "adreno",
+            "powervr",
+            "intel(r) hd graphics",
+            "intel(r) uhd graphics",
+            "intel(r) iris",
+        ];
+
+        for pattern in &integrated_patterns {
+            if name_lower.contains(pattern) {
+                debug!(target: LOG_TARGET,
+                    "Device {} detected as integrated (name pattern: {})",
+                    name, pattern
+                );
+                return GpuDeviceType::Integrated;
+            }
+        }
+
+        // Common dedicated GPU patterns
+        let dedicated_patterns = [
+            "nvidia geforce",
+            "nvidia rtx",
+            "nvidia gtx",
+            "nvidia tesla",
+            "nvidia quadro",
+            "amd radeon rx",
+            "amd radeon r9",
+            "amd radeon r7",
+            "amd radeon pro",
+            "amd firepro",
+        ];
+
+        for pattern in &dedicated_patterns {
+            if name_lower.contains(pattern) {
+                debug!(target: LOG_TARGET,
+                    "Device {} detected as dedicated (name pattern: {})",
+                    name, pattern
+                );
+                return GpuDeviceType::Dedicated;
+            }
+        }
+
+        // Method 5: Memory size for dedicated detection
+        // Dedicated GPUs typically have >= 2GB of dedicated memory
+        if mem_gb >= 2.0 {
+            debug!(target: LOG_TARGET,
+                "Device {} likely dedicated (large memory size: {:.1} GB)",
+                name, mem_gb
+            );
+            return GpuDeviceType::Dedicated;
+        }
+
+        debug!(target: LOG_TARGET,
+            "Device {} type could not be determined reliably",
+            name
+        );
+        GpuDeviceType::Unknown
     }
 
     /// Get device name
@@ -79,6 +201,11 @@ impl OpenClDevice {
     /// Get global memory size in bytes
     pub fn global_mem_size(&self) -> u64 {
         self.global_mem_size
+    }
+
+    /// Get device type (integrated/dedicated)
+    pub fn device_type(&self) -> &GpuDeviceType {
+        &self.device_type
     }
 
     /// Get the underlying OpenCL device
@@ -122,6 +249,20 @@ impl OpenClDevice {
                     for device_cl_id in devices {
                         let device = Device::new(device_cl_id);
 
+                        info!(target: LOG_TARGET,
+                            "Detected OpenCL device {}: {} (Platform: {})",
+                            device_counter,
+                            device.name().unwrap_or_else(|_| "Unknown Device".to_string()),
+                            platform_name
+                        );
+
+                        device.svm_mem_capability();
+                        info!(target: LOG_TARGET,
+                            "OpenCL device {} SVM capabilities: {:?}",
+                            device_counter,
+                            device.svm_mem_capability()
+                        );
+
                         match OpenClDevice::new(device, device_counter, platform_name.clone()) {
                             Ok(opencl_device) => {
                                 info!(target: LOG_TARGET,
@@ -160,11 +301,12 @@ impl OpenClDevice {
     /// Get device info string for display
     pub fn info_string(&self) -> String {
         format!(
-            "{} (CU: {}, WG: {}, MEM: {:.1} GB)",
+            "{} (CU: {}, WG: {}, MEM: {:.1} GB, Type: {:?})",
             self.name,
             self.max_compute_units,
             self.max_work_group_size,
-            self.global_mem_size as f64 / (1024.0 * 1024.0 * 1024.0)
+            self.global_mem_size as f64 / (1024.0 * 1024.0 * 1024.0),
+            self.device_type
         )
     }
 

@@ -340,7 +340,7 @@ impl GpuManager {
         }
 
         let batch_size = engine.get_suggested_batch_size();
-        let mut nonce_offset = thread_id as u64 * 1_000_000_000; // Unique nonce space per GPU
+        let mut nonce_offset = thread_id as u64; // Unique nonce space per GPU
         let mut current_job: Option<MiningJob> = None;
         let mut last_stats_update = std::time::Instant::now();
 
@@ -362,7 +362,7 @@ impl GpuManager {
             if let Ok(job) = job_rx.try_recv() {
                 debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
                 current_job = Some(job);
-                nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                nonce_offset = thread_id as u64; // Reset nonce space
                 continue; // Immediately start mining the new job
             }
 
@@ -536,7 +536,7 @@ impl GpuManager {
                     Ok(Ok(job)) => {
                         debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
                         current_job = Some(job);
-                        nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                        nonce_offset = thread_id as u64; // Reset nonce space
                     }
                     Ok(Err(e)) => {
                         error!(target: LOG_TARGET,"🎮 GPU {} job channel error: {}", thread_id, e);

@@ -79,6 +79,11 @@ path = "src/main.rs"
 name = "gpu_test"
 path = "src/bin/gpu_test.rs"
 
+[[example]]
+name = "gpu_device_types"
+path = "examples/gpu_device_types.rs"
+required-features = ["gpu"]
+
 # Changelog:
 # - v1.2.0-hybrid (2025-06-25): Added proper hybrid mode support.
 #   - Updated hybrid feature to include both "cpu" and "gpu" features.
