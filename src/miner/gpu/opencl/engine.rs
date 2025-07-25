@@ -457,7 +457,7 @@ impl OpenClEngine {
         // .max(64)
         // .min(256)
         // .min(max_work_group_size);
-        let local_size = max_work_group_size.max(64).min(256);
+        let local_size = 64.max(max_work_group_size.min(256));
 
         // Use the tunable work_groups_per_cu value
         // let base_work_groups = compute_units * self.work_groups_per_cu;
