@@ -37,7 +37,8 @@ pub struct GpuManager {
     pub threads: Vec<GpuMiningThread>,
     initialized: bool,
     gpu_settings: GpuSettings,
-    thread_id_offset: usize, // For hybrid mode thread coordination
+    excluded_devices: Vec<u32>, // Excluded devices by ID
+    thread_id_offset: usize,    // For hybrid mode thread coordination
 }
 
 impl GpuManager {
@@ -49,12 +50,13 @@ impl GpuManager {
             threads: Vec::new(),
             initialized: false,
             gpu_settings: GpuSettings::default(),
-            thread_id_offset: 0, // Default: GPU uses thread ID 0
+            excluded_devices: Vec::new(), // No excluded devices by default
+            thread_id_offset: 0,          // Default: GPU uses thread ID 0
         }
     }
 
     /// Create a new GPU manager with settings
-    pub fn new_with_settings(settings: GpuSettings) -> Self {
+    pub fn new_with_settings(settings: GpuSettings, excluded_devices: Vec<u32>) -> Self {
         info!(target: LOG_TARGET,
             "Creating GPU manager with settings: intensity={}%, batch={:?}",
             settings.intensity, settings.batch_size
@@ -65,6 +67,7 @@ impl GpuManager {
             initialized: false,
             gpu_settings: settings,
             thread_id_offset: 0,
+            excluded_devices,
         }
     }
 
@@ -140,12 +143,13 @@ impl GpuManager {
             .into_iter()
             .filter(|device| {
                 let suitable = device.is_suitable_for_mining();
-                if suitable {
+                let is_excluded = self.excluded_devices.contains(&device.device_id());
+                if suitable && !is_excluded {
                     info!(target: LOG_TARGET,"✅ Found suitable GPU: {}", device.info_string());
                 } else {
                     warn!(target: LOG_TARGET,"⚠️ GPU not suitable for mining: {}", device.info_string());
                 }
-                suitable
+                suitable && !is_excluded
             })
             .collect();
 
@@ -339,8 +343,8 @@ impl GpuManager {
             return;
         }
 
-        let batch_size = engine.get_suggested_batch_size();
-        let mut nonce_offset = thread_id as u64 * 1_000_000_000; // Unique nonce space per GPU
+        let mut batch_size = engine.get_suggested_batch_size();
+        let mut nonce_offset = thread_id as u64; // Unique nonce space per GPU
         let mut current_job: Option<MiningJob> = None;
         let mut last_stats_update = std::time::Instant::now();
 
@@ -362,7 +366,7 @@ impl GpuManager {
             if let Ok(job) = job_rx.try_recv() {
                 debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
                 current_job = Some(job);
-                nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                nonce_offset = thread_id as u64; // Reset nonce space
                 continue; // Immediately start mining the new job
             }
 
@@ -370,7 +374,8 @@ impl GpuManager {
             if let Some(ref job) = current_job {
                 // *** CRITICAL FIX: CONTINUOUS MINING - NO SLEEP! ***
                 match engine.mine(job, nonce_offset, batch_size).await {
-                    Ok((found_nonce, hashes_processed, best_difficulty)) => {
+                    Ok((found_nonce, hashes_processed, best_difficulty, adjusted_batch_size)) => {
+                        batch_size = adjusted_batch_size; // Update batch size if adjusted
                         // Update stats - FIXED to ensure thread_id is valid
                         if thread_id < stats.thread_stats.len() {
                             stats.thread_stats[thread_id].update_hashrate(hashes_processed as u64);
@@ -536,7 +541,7 @@ impl GpuManager {
                     Ok(Ok(job)) => {
                         debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
                         current_job = Some(job);
-                        nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                        nonce_offset = thread_id as u64; // Reset nonce space
                     }
                     Ok(Err(e)) => {
                         error!(target: LOG_TARGET,"🎮 GPU {} job channel error: {}", thread_id, e);
