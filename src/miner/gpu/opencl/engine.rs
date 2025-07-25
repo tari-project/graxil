@@ -618,20 +618,9 @@ impl OpenClEngine {
         debug!(target: LOG_TARGET, "Kernel execution completed for device: {}", self.device.name());
 
         let elapsed_time = timer.elapsed().as_millis();
-        let target_time = 75; // Target execution time in milliseconds
+        let target_time = 100; // Target execution time in milliseconds
         let adjustment_factor = 0.1; // Proportional adjustment factor
 
-        if elapsed_time > target_time {
-            warn!(target: LOG_TARGET,
-                "Kernel execution took too long: {} ms (device: {})",
-                elapsed_time, self.device.name()
-            );
-            let decrease = ((elapsed_time - target_time) as f64 * adjustment_factor) as usize;
-            batch_size = batch_size.saturating_sub(decrease.max(1)); // Reduce batch size proportionally
-        } else if elapsed_time < target_time {
-            let increase = ((target_time - elapsed_time) as f64 * adjustment_factor) as usize;
-            batch_size = batch_size.saturating_add(increase.max(1)); // Increase batch size proportionally
-        }
         // Read results
         let mut output = vec![0u64, 0u64];
         unsafe {
@@ -642,6 +631,17 @@ impl OpenClEngine {
 
         let mining_time = start_time.elapsed();
         let hashes_processed: u64 = u64::try_from(global_size)? * u64::from(batch_size);
+        if elapsed_time > target_time {
+            // warn!(target: LOG_TARGET,
+            //     "Kernel execution took too long: {} ms (device: {})",
+            //     elapsed_time, self.device.name()
+            // );
+            let decrease: u32 = ((elapsed_time - target_time) as f64 * adjustment_factor) as u32;
+            batch_size = batch_size.saturating_sub(decrease.max(1)); // Reduce batch size proportionally
+        } else if elapsed_time < target_time {
+            let increase: u32 = ((target_time - elapsed_time) as f64 * adjustment_factor) as u32;
+            batch_size = batch_size.saturating_add(increase.max(1)); // Increase batch size proportionally
+        }
 
         debug!(target: LOG_TARGET,
             "GPU mining completed in {:.2}ms: {} hashes, {:.2} MH/s (intensity: {}%, WG: {})",
