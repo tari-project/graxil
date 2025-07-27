@@ -116,17 +116,6 @@ impl OpenClDevice {
             }
         }
 
-        // Method 2: NVIDIA-specific integrated memory check
-        if let Ok(integrated_nv) = device.integrated_memory_nv() {
-            if integrated_nv != 0 {
-                debug!(target: LOG_TARGET,
-                    "Device {} detected as integrated (NVIDIA integrated memory)",
-                    name
-                );
-                return GpuDeviceType::Integrated;
-            }
-        }
-
         // Method 3: Memory size heuristics
         // Integrated GPUs typically have smaller memory allocations
         // or share system memory (usually < 2GB dedicated)
