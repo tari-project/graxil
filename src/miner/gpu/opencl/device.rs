@@ -139,6 +139,9 @@ impl OpenClDevice {
             "intel arc", // Some Intel Arc are integrated
             "amd radeon vega",
             "amd radeon graphics", // APU graphics
+            "apple m1",
+            "apple m2",
+            "apple m3",
             "mali",
             "adreno",
             "powervr",
@@ -164,9 +167,6 @@ impl OpenClDevice {
             "nvidia gtx",
             "nvidia tesla",
             "nvidia quadro",
-            "apple m1",
-            "apple m2",
-            "apple m3",
             "amd radeon rx",
             "amd radeon r9",
             "amd radeon r7",
