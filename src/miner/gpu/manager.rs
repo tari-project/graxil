@@ -37,7 +37,8 @@ pub struct GpuManager {
     pub threads: Vec<GpuMiningThread>,
     initialized: bool,
     gpu_settings: GpuSettings,
-    thread_id_offset: usize, // For hybrid mode thread coordination
+    excluded_devices: Vec<u32>, // Excluded devices by ID
+    thread_id_offset: usize,    // For hybrid mode thread coordination
 }
 
 impl GpuManager {
@@ -49,12 +50,13 @@ impl GpuManager {
             threads: Vec::new(),
             initialized: false,
             gpu_settings: GpuSettings::default(),
-            thread_id_offset: 0, // Default: GPU uses thread ID 0
+            excluded_devices: Vec::new(), // No excluded devices by default
+            thread_id_offset: 0,          // Default: GPU uses thread ID 0
         }
     }
 
     /// Create a new GPU manager with settings
-    pub fn new_with_settings(settings: GpuSettings) -> Self {
+    pub fn new_with_settings(settings: GpuSettings, excluded_devices: Vec<u32>) -> Self {
         info!(target: LOG_TARGET,
             "Creating GPU manager with settings: intensity={}%, batch={:?}",
             settings.intensity, settings.batch_size
@@ -65,6 +67,7 @@ impl GpuManager {
             initialized: false,
             gpu_settings: settings,
             thread_id_offset: 0,
+            excluded_devices,
         }
     }
 
@@ -140,12 +143,13 @@ impl GpuManager {
             .into_iter()
             .filter(|device| {
                 let suitable = device.is_suitable_for_mining();
-                if suitable {
+                let is_excluded = self.excluded_devices.contains(&device.device_id());
+                if suitable && !is_excluded {
                     info!(target: LOG_TARGET,"✅ Found suitable GPU: {}", device.info_string());
                 } else {
                     warn!(target: LOG_TARGET,"⚠️ GPU not suitable for mining: {}", device.info_string());
                 }
-                suitable
+                suitable && !is_excluded
             })
             .collect();
 
