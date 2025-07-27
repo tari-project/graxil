@@ -82,6 +82,11 @@ path = "src/main.rs"
 name = "gpu_test"
 path = "src/bin/gpu_test.rs"
 
+[[example]]
+name = "gpu_device_types"
+path = "examples/gpu_device_types.rs"
+required-features = ["gpu"]
+
 [dev-dependencies]
 tempfile = "3.8"
 
