@@ -57,7 +57,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     device.global_mem_size() as f64 / (1024.0 * 1024.0 * 1024.0));
                 info!(target: LOG_TARGET, "   Type: {:?}", device.device_type());
 
-                // Show OpenCL properties used for detection
                 let cl_device = device.device();
 
                 if let Ok(host_unified) = cl_device.host_unified_memory() {

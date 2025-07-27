@@ -64,6 +64,32 @@ pub enum GpuVendor {
     Unknown,
 }
 
+impl GpuVendor {
+    /// Get the vendor name as a string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GpuVendor::NVIDIA => "NVIDIA",
+            GpuVendor::AMD => "AMD",
+            GpuVendor::Intel => "Intel",
+            GpuVendor::Unknown => "Unknown",
+        }
+    }
+
+    pub fn from_str(string_name: &str) -> Self {
+        let sanitized_name = string_name.to_lowercase();
+        let sanitized_name = sanitized_name.trim().to_string();
+        if sanitized_name.contains("nvidia") {
+            GpuVendor::NVIDIA
+        } else if sanitized_name.contains("amd") {
+            GpuVendor::AMD
+        } else if sanitized_name.contains("intel") {
+            GpuVendor::Intel
+        } else {
+            GpuVendor::Unknown
+        }
+    }
+}
+
 /// GPU detection result for better error handling
 #[derive(Debug)]
 pub enum GpuDetectionResult {

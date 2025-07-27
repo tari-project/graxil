@@ -8,7 +8,7 @@
 // Feature-based mining with proper thread coordination: --features cpu, --features gpu, --features hybrid
 
 use clap::Parser;
-use log::info;
+use log::{error, info};
 use sha3x_miner::{
     Result,
     benchmark::runner::BenchmarkRunner,
@@ -97,6 +97,27 @@ async fn main() -> Result<()> {
     // Check for SV2 test mode first
     if args.test_sv2 {
         return handle_sv2_test(&args).await;
+    }
+
+    if args.detect {
+        if let Some(status_file_directory) = args.status_file_dir {
+            use sha3x_miner::miner::GpuManager;
+
+            info!(target: LOG_TARGET, "🔍 Detecting OpenCL devices...");
+            match GpuManager::generate_status_files(status_file_directory).await {
+                Ok(_) => info!(target: LOG_TARGET, "✅ Device detection complete!"),
+                Err(e) => {
+                    error!(target: LOG_TARGET, "❌ Failed to detect devices: {}", e);
+                    return Err(e.into());
+                }
+            }
+        } else {
+            eprintln!("❌ --status-file-dir is required for device detection");
+            std::process::exit(1);
+        }
+
+        info!(target: LOG_TARGET, "🔍 Device detection complete! Check status files in the specified directory.");
+        return Ok(());
     }
 
     // Validate arguments

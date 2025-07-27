@@ -87,6 +87,11 @@ name = "gpu_device_types"
 path = "examples/gpu_device_types.rs"
 required-features = ["gpu"]
 
+[[example]]
+name = "device_detection"
+path = "examples/device_detection.rs"
+required-features = ["gpu"]
+
 [dev-dependencies]
 tempfile = "3.8"
 

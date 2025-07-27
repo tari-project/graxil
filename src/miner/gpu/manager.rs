@@ -10,6 +10,8 @@
 
 use anyhow::{Error, Result};
 use log::{debug, error, info, warn};
+use opencl3::device;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::Receiver;
@@ -17,7 +19,10 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use super::opencl::{OpenClDevice, OpenClEngine};
 use crate::core::types::{GpuSettings, MiningJob};
+use crate::miner::gpu::status_file::GpuStatusFileDevice;
+use crate::miner::gpu::{GpuStatusFile, GpuStatusFileError, GpuStatusFileManager, KernelType};
 use crate::miner::stats::MinerStats;
+use crate::miner::stats::gpu_info::GpuVendor;
 
 const LOG_TARGET: &str = "tari::graxil::manager";
 
@@ -574,6 +579,51 @@ impl GpuManager {
             GpuSettings::default(),
         )
         .await;
+    }
+
+    pub async fn generate_status_files(directory_path: PathBuf) -> Result<(), anyhow::Error> {
+        // Create GPU status file manager
+        let status_file_manager =
+            GpuStatusFileManager::new(directory_path, KernelType::OpenCL).await?;
+
+        match OpenClDevice::detect_devices() {
+            Ok(device) => {
+                let status_file_devices: Vec<GpuStatusFileDevice> = device
+                    .into_iter()
+                    .map(|device| {
+                        let vendor = &device
+                            .device()
+                            .vendor()
+                            .unwrap_or_else(|_| "Unknown".to_string());
+                        let vendor = GpuVendor::from_str(vendor);
+
+                        let device = GpuStatusFileDevice {
+                            name: device.name().to_string(),
+                            device_id: device.device_id(),
+                            platform_name: device.platform_name().to_string(),
+                            vendor,
+                            max_work_group_size: device.max_work_group_size(),
+                            max_compute_units: device.max_compute_units(),
+                            global_mem_size: device.global_mem_size(),
+                            device_type: device.device_type().clone(),
+                        };
+
+                        device
+                    })
+                    .collect();
+
+                status_file_manager
+                    .save(&GpuStatusFile {
+                        devices: status_file_devices,
+                    })
+                    .await?;
+            }
+            Err(e) => {
+                error!(target: LOG_TARGET, "Failed to detect GPU devices: {}", e);
+            }
+        }
+
+        Ok(())
     }
 }
 
