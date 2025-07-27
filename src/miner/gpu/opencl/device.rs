@@ -12,7 +12,16 @@ use opencl3::{
     device::{CL_DEVICE_TYPE_GPU, Device},
     platform::get_platforms,
 };
+use serde::{Deserialize, Serialize};
 const LOG_TARGET: &str = "tari::graxil::device";
+/// GPU device type classification
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GpuDeviceType {
+    Integrated,
+    Dedicated,
+    Unknown,
+}
+
 /// OpenCL device information
 #[derive(Debug, Clone)]
 pub struct OpenClDevice {

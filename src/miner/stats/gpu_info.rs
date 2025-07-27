@@ -21,7 +21,7 @@
 // - Extensible architecture for future AMD/Intel GPU support
 
 use log::{debug, info, warn};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -56,7 +56,7 @@ pub struct GpuInfo {
 }
 
 /// GPU vendor enumeration
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum GpuVendor {
     NVIDIA,
     AMD,

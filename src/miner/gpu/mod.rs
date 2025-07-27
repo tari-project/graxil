@@ -28,12 +28,18 @@ pub mod manager;
 #[cfg(any(feature = "gpu", feature = "hybrid"))]
 pub mod gpu_miner;
 
+#[cfg(any(feature = "gpu", feature = "hybrid"))]
+pub mod status_file;
+
 // Re-export key types when GPU features are enabled
 #[cfg(any(feature = "gpu", feature = "hybrid"))]
 pub use manager::GpuManager;
 
 #[cfg(any(feature = "gpu", feature = "hybrid"))]
 pub use gpu_miner::GpuMiner;
+
+#[cfg(any(feature = "gpu", feature = "hybrid"))]
+pub use status_file::{GpuStatusFile, GpuStatusFileError, GpuStatusFileManager, KernelType};
 
 // Placeholder for when GPU features are disabled
 #[cfg(not(any(feature = "gpu", feature = "hybrid")))]
@@ -44,7 +50,7 @@ impl GpuManager {
     pub fn new() -> Self {
         Self
     }
-    
+
     pub fn is_available() -> bool {
         false
     }
@@ -57,7 +63,7 @@ impl GpuManager {
 //   - Supports both standalone GPU mode and hybrid CPU+GPU mode
 // - v1.1.0 (2025-06-24): Added GpuMiner support
 //   - Added gpu_miner module declaration for GPU-only mining
-//   - Added GpuMiner re-export for direct GPU mining capabilities  
+//   - Added GpuMiner re-export for direct GPU mining capabilities
 //   - Enables 363+ MH/s GPU-only mining mode
 // - v1.0.0 (2025-06-24): Initial GPU module structure
 //   - Added conditional compilation for GPU features
