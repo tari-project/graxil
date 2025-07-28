@@ -29,7 +29,7 @@ pub mod manager;
 pub mod gpu_miner;
 
 #[cfg(any(feature = "gpu", feature = "hybrid"))]
-pub mod status_file;
+pub mod gpu_information_file;
 
 // Re-export key types when GPU features are enabled
 #[cfg(any(feature = "gpu", feature = "hybrid"))]
@@ -39,7 +39,9 @@ pub use manager::GpuManager;
 pub use gpu_miner::GpuMiner;
 
 #[cfg(any(feature = "gpu", feature = "hybrid"))]
-pub use status_file::{GpuStatusFile, GpuStatusFileError, GpuStatusFileManager, KernelType};
+pub use gpu_information_file::{
+    GpuInformationFile, GpuInformationFileError, GpuInformationFileManager, KernelType,
+};
 
 // Placeholder for when GPU features are disabled
 #[cfg(not(any(feature = "gpu", feature = "hybrid")))]

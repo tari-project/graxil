@@ -19,8 +19,10 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use super::opencl::{OpenClDevice, OpenClEngine};
 use crate::core::types::{GpuSettings, MiningJob};
-use crate::miner::gpu::status_file::GpuStatusFileDevice;
-use crate::miner::gpu::{GpuStatusFile, GpuStatusFileError, GpuStatusFileManager, KernelType};
+use crate::miner::gpu::gpu_information_file::GpuInformationFileDevice;
+use crate::miner::gpu::{
+    GpuInformationFile, GpuInformationFileError, GpuInformationFileManager, KernelType,
+};
 use crate::miner::stats::MinerStats;
 use crate::miner::stats::gpu_info::GpuVendor;
 
@@ -581,14 +583,14 @@ impl GpuManager {
         .await;
     }
 
-    pub async fn generate_status_files(directory_path: PathBuf) -> Result<(), anyhow::Error> {
-        // Create GPU status file manager
-        let status_file_manager =
-            GpuStatusFileManager::new(directory_path, KernelType::OpenCL).await?;
+    pub async fn generate_information_files(directory_path: PathBuf) -> Result<(), anyhow::Error> {
+        // Create GPU information file manager
+        let information_file_manager =
+            GpuInformationFileManager::new(directory_path, KernelType::OpenCL).await?;
 
         match OpenClDevice::detect_devices() {
             Ok(device) => {
-                let status_file_devices: Vec<GpuStatusFileDevice> = device
+                let information_file_devices: Vec<GpuInformationFileDevice> = device
                     .into_iter()
                     .map(|device| {
                         let vendor = &device
@@ -597,7 +599,7 @@ impl GpuManager {
                             .unwrap_or_else(|_| "Unknown".to_string());
                         let vendor = GpuVendor::from_str(vendor);
 
-                        let device = GpuStatusFileDevice {
+                        let device = GpuInformationFileDevice {
                             name: device.name().to_string(),
                             device_id: device.device_id(),
                             platform_name: device.platform_name().to_string(),
@@ -612,9 +614,9 @@ impl GpuManager {
                     })
                     .collect();
 
-                status_file_manager
-                    .save(&GpuStatusFile {
-                        devices: status_file_devices,
+                information_file_manager
+                    .save(&GpuInformationFile {
+                        devices: information_file_devices,
                     })
                     .await?;
             }

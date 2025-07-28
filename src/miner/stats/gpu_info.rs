@@ -65,7 +65,6 @@ pub enum GpuVendor {
 }
 
 impl GpuVendor {
-    /// Get the vendor name as a string
     pub fn as_str(&self) -> &'static str {
         match self {
             GpuVendor::NVIDIA => "NVIDIA",

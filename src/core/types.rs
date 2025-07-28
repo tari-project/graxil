@@ -86,23 +86,23 @@ impl Default for GpuSettings {
                   For detailed help, use: sha3x-miner --help"
 )]
 pub struct Args {
-    /// Detect available OpenCL GPU devices and save to status file
+    /// Detect available GPU devices and save to information file
     #[arg(
         long,
         alias = "detect",
         default_value = "false",
-        help = "Detect available GPUs and save them to status file"
+        help = "Detect available GPUs and save them to information file"
     )]
     pub detect: bool,
 
-    /// Path to the GPU status file directory
+    /// Path to the GPU information file directory
     #[arg(
         long,
-        alias = "status-file-dir",
+        alias = "information-file-dir",
         value_name = "DIR",
-        help = "Directory to save GPU status file"
+        help = "Directory to save GPU information file"
     )]
-    pub status_file_dir: Option<PathBuf>,
+    pub information_file_dir: Option<PathBuf>,
 
     /// (Optional) Directory to store logs
     #[arg(long, alias = "log-dir", value_name = "log-dir")]

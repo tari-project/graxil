@@ -100,11 +100,11 @@ async fn main() -> Result<()> {
     }
 
     if args.detect {
-        if let Some(status_file_directory) = args.status_file_dir {
+        if let Some(information_file_directory) = args.information_file_dir {
             use sha3x_miner::miner::GpuManager;
 
             info!(target: LOG_TARGET, "🔍 Detecting OpenCL devices...");
-            match GpuManager::generate_status_files(status_file_directory).await {
+            match GpuManager::generate_information_files(information_file_directory).await {
                 Ok(_) => info!(target: LOG_TARGET, "✅ Device detection complete!"),
                 Err(e) => {
                     error!(target: LOG_TARGET, "❌ Failed to detect devices: {}", e);
@@ -112,11 +112,11 @@ async fn main() -> Result<()> {
                 }
             }
         } else {
-            eprintln!("❌ --status-file-dir is required for device detection");
+            eprintln!("❌ --information-file-dir is required for device detection");
             std::process::exit(1);
         }
 
-        info!(target: LOG_TARGET, "🔍 Device detection complete! Check status files in the specified directory.");
+        info!(target: LOG_TARGET, "🔍 Device detection complete! Check information files in the specified directory.");
         return Ok(());
     }
 

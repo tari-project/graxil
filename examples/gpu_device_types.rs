@@ -12,6 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mock_logs_directory =
         PathBuf::from(std::env::var("MOCK_LOGS_DIRECTORY").unwrap_or_else(|_| "logs".to_string()));
 
+    // Log4s configuration
     tari_common::initialize_logging(
         &mock_logs_directory.join("graxil").join("log4rs_config.yml"),
         &mock_logs_directory.join("graxil"),

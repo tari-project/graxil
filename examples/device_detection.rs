@@ -1,4 +1,4 @@
-// Example showing GPU device detection and status file generation
+// Example showing GPU device detection and information file generation
 // This demonstrates the --detect functionality from src/main.rs
 
 use log::{error, info};
@@ -8,11 +8,11 @@ const LOG_TARGET: &str = "tari::graxil::device_detection_example";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup logging similar to main.rs
     let logs_directory = env::current_dir()
         .expect("Could not get current directory")
         .join("logs");
 
+    // Log4s configuration
     tari_common::initialize_logging(
         &logs_directory.join("graxil").join("log4rs_config.yml"),
         &logs_directory.join("graxil"),
@@ -23,41 +23,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(target: LOG_TARGET, "🔍 GPU Device Detection Example");
     info!(target: LOG_TARGET, "=====================================");
 
-    // Create a temporary directory for status files (like --status-file-dir)
-    let status_file_directory = env::current_dir()
+    let information_file_directory = env::current_dir()
         .expect("Could not get current directory")
-        .join("temp_status_files");
+        .join("temp_information_files");
 
     // Ensure the directory exists
-    if !status_file_directory.exists() {
-        std::fs::create_dir_all(&status_file_directory)?;
-        info!(target: LOG_TARGET, "📁 Created status file directory: {:?}", status_file_directory);
+    if !information_file_directory.exists() {
+        std::fs::create_dir_all(&information_file_directory)?;
+        info!(target: LOG_TARGET, "📁 Created information file directory: {:?}", information_file_directory);
     }
 
-    info!(target: LOG_TARGET, "🎯 Status file directory: {:?}", status_file_directory);
+    info!(target: LOG_TARGET, "🎯 Information file directory: {:?}", information_file_directory);
     info!(target: LOG_TARGET, "");
 
-    // This mirrors the exact code from main.rs lines 102-122
     info!(target: LOG_TARGET, "🔍 Detecting OpenCL devices...");
-    match GpuManager::generate_status_files(status_file_directory.clone()).await {
+    match GpuManager::generate_information_files(information_file_directory.clone()).await {
         Ok(_) => {
             info!(target: LOG_TARGET, "✅ Device detection complete!");
 
-            // Show what files were created
             info!(target: LOG_TARGET, "");
-            info!(target: LOG_TARGET, "📄 Generated status files:");
+            info!(target: LOG_TARGET, "📄 Generated information files:");
 
-            if let Ok(entries) = std::fs::read_dir(&status_file_directory) {
+            if let Ok(entries) = std::fs::read_dir(&information_file_directory) {
                 for entry in entries.flatten() {
                     if let Some(filename) = entry.file_name().to_str() {
                         if filename.ends_with(".json") {
                             info!(target: LOG_TARGET, "   - {}", filename);
 
-                            // Try to read and display the content
                             if let Ok(content) = std::fs::read_to_string(entry.path()) {
                                 info!(target: LOG_TARGET, "     Content preview:");
 
-                                // Parse and display in a nice format
                                 if let Ok(json_value) =
                                     serde_json::from_str::<serde_json::Value>(&content)
                                 {
@@ -98,12 +93,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    info!(target: LOG_TARGET, "🔍 Device detection complete! Check status files in the specified directory.");
-    info!(target: LOG_TARGET, "🧹 Cleanup: Removing temporary status files...");
+    info!(target: LOG_TARGET, "🔍 Device detection complete! Check information files in the specified directory.");
+    info!(target: LOG_TARGET, "🧹 Cleanup: Removing temporary information files...");
 
     // Clean up the temporary directory
-    if status_file_directory.exists() {
-        if let Err(e) = std::fs::remove_dir_all(&status_file_directory) {
+    if information_file_directory.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&information_file_directory) {
             error!(target: LOG_TARGET, "⚠️ Failed to clean up temporary directory: {}", e);
         } else {
             info!(target: LOG_TARGET, "✅ Temporary files cleaned up");

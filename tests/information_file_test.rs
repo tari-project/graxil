@@ -1,22 +1,8 @@
-// SHA3x Miner - Free and Open Source Software Statement
-//
-// This project, sha3x-miner, is Free and Open Source Software (FOSS) licensed
-// under the MIT License. You are free to use, modify, and distribute this
-// software in accordance with the license terms. Contributions are welcome
-// via pull requests to the project repository.
-//
-// File: tests/status_file_test.rs
-// Version: 1.0.0
-// Developer: Test Implementation
-//
-// This file contains comprehensive tests for the GPU status file management functionality.
-// Tests cover file creation, reading, writing, serialization, error handling, and edge cases.
-
 #[cfg(test)]
 mod tests {
-    use sha3x_miner::miner::gpu::GpuStatusFileError;
-    use sha3x_miner::miner::gpu::status_file::{
-        GpuStatusFile, GpuStatusFileDevice, GpuStatusFileManager, KernelType,
+    use sha3x_miner::miner::gpu::GpuInformationFileError;
+    use sha3x_miner::miner::gpu::gpu_information_file::{
+        GpuInformationFile, GpuInformationFileDevice, GpuInformationFileManager, KernelType,
     };
     use sha3x_miner::miner::{gpu::opencl::device::GpuDeviceType, stats::gpu_info::GpuVendor};
     use std::path::PathBuf;
@@ -28,9 +14,9 @@ mod tests {
         tempdir().expect("Failed to create temporary directory")
     }
 
-    // Helper function to create a sample GPU status file device
-    fn create_sample_device_nvidia() -> GpuStatusFileDevice {
-        GpuStatusFileDevice {
+    // Helper function to create a sample GPU information file device
+    fn create_sample_device_nvidia() -> GpuInformationFileDevice {
+        GpuInformationFileDevice {
             name: "NVIDIA GeForce RTX 4090".to_string(),
             device_id: 0,
             platform_name: "NVIDIA CUDA".to_string(),
@@ -42,8 +28,8 @@ mod tests {
         }
     }
 
-    fn create_sample_device_amd() -> GpuStatusFileDevice {
-        GpuStatusFileDevice {
+    fn create_sample_device_amd() -> GpuInformationFileDevice {
+        GpuInformationFileDevice {
             name: "AMD Radeon RX 7900 XT".to_string(),
             device_id: 1,
             platform_name: "AMD Accelerated Parallel Processing".to_string(),
@@ -55,9 +41,9 @@ mod tests {
         }
     }
 
-    // Helper function to create a sample GPU status file
-    fn create_sample_status_file() -> GpuStatusFile {
-        GpuStatusFile {
+    // Helper function to create a sample GPU information file
+    fn create_sample_information_file() -> GpuInformationFile {
+        GpuInformationFile {
             devices: vec![create_sample_device_nvidia(), create_sample_device_amd()],
         }
     }
@@ -68,21 +54,19 @@ mod tests {
     }
 
     #[test]
-    fn test_gpu_status_file_serialization() {
-        let status_file = create_sample_status_file();
+    fn test_gpu_information_file_serialization() {
+        let gpu_information_file = create_sample_information_file();
 
-        // Test serialization
-        let serialized =
-            serde_json::to_string(&status_file).expect("Failed to serialize GPU status file");
+        let serialized = serde_json::to_string(&gpu_information_file)
+            .expect("Failed to serialize GPU information file");
 
         assert!(serialized.contains("NVIDIA GeForce RTX 4090"));
         assert!(serialized.contains("AMD Radeon RX 7900 XT"));
         assert!(serialized.contains("device_id"));
         assert!(serialized.contains("vendor"));
 
-        // Test deserialization
-        let deserialized: GpuStatusFile =
-            serde_json::from_str(&serialized).expect("Failed to deserialize GPU status file");
+        let deserialized: GpuInformationFile =
+            serde_json::from_str(&serialized).expect("Failed to deserialize GPU information file");
 
         assert_eq!(deserialized.devices.len(), 2);
         assert_eq!(deserialized.devices[0].name, "NVIDIA GeForce RTX 4090");
@@ -90,63 +74,61 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_gpu_status_file_manager_new_success() {
+    async fn test_gpu_information_file_manager_new_success() {
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path.clone(), KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path.clone(), KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
-        // Verify the file path is constructed correctly
-        let expected_file_path = dir_path.join("gpu_status_opencl.json");
+        let expected_file_path = dir_path.join("gpu_information_opencl.json");
         assert_eq!(manager.file_path(), &expected_file_path);
         assert_eq!(manager.directory_path(), &dir_path);
     }
 
     #[tokio::test]
-    async fn test_gpu_status_file_manager_new_invalid_directory() {
+    async fn test_gpu_information_file_manager_new_invalid_directory() {
         let non_existent_path = PathBuf::from("/non/existent/directory");
 
-        let result = GpuStatusFileManager::new(non_existent_path.clone(), KernelType::OpenCL).await;
+        let result =
+            GpuInformationFileManager::new(non_existent_path.clone(), KernelType::OpenCL).await;
 
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            GpuStatusFileError::NotADirectory { path } if path == non_existent_path
+            GpuInformationFileError::NotADirectory { path } if path == non_existent_path
         ));
     }
 
     #[tokio::test]
-    async fn test_gpu_status_file_manager_new_file_path() {
+    async fn test_gpu_information_file_manager_new_file_path() {
         let temp_dir = create_temp_dir();
         let file_path = temp_dir.path().join("some_file.txt");
 
-        // Create a file instead of a directory
         fs::write(&file_path, "test content")
             .await
             .expect("Failed to create test file");
 
-        let result = GpuStatusFileManager::new(file_path.clone(), KernelType::OpenCL).await;
+        let result = GpuInformationFileManager::new(file_path.clone(), KernelType::OpenCL).await;
 
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            GpuStatusFileError::NotADirectory { path } if path == file_path
+            GpuInformationFileError::NotADirectory { path } if path == file_path
         ));
     }
 
     #[tokio::test]
     async fn test_resolve_file_name() {
-        // This tests the internal _resolve_file_name method indirectly
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path.clone(), KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path.clone(), KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
-        let expected_file_path = dir_path.join("gpu_status_opencl.json");
+        let expected_file_path = dir_path.join("gpu_information_opencl.json");
         assert_eq!(manager.file_path(), &expected_file_path);
     }
 
@@ -155,65 +137,63 @@ mod tests {
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path, KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path, KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
-        let original_status = create_sample_status_file();
+        let original_gpu_information = create_sample_information_file();
 
-        // Test saving
         manager
-            .save(&original_status)
+            .save(&original_gpu_information)
             .await
-            .expect("Failed to save GPU status file");
+            .expect("Failed to save GPU information file");
 
-        // Verify file exists
         assert!(manager.file_path().exists());
 
-        // Test loading
-        let loaded_status = manager
+        let loaded_information = manager
             .load()
             .await
-            .expect("Failed to load GPU status file");
+            .expect("Failed to load GPU information file");
 
-        // Verify content matches
-        assert_eq!(loaded_status.devices.len(), original_status.devices.len());
         assert_eq!(
-            loaded_status.devices[0].name,
-            original_status.devices[0].name
+            loaded_information.devices.len(),
+            original_gpu_information.devices.len()
         );
         assert_eq!(
-            loaded_status.devices[1].name,
-            original_status.devices[1].name
+            loaded_information.devices[0].name,
+            original_gpu_information.devices[0].name
         );
         assert_eq!(
-            loaded_status.devices[0].vendor,
-            original_status.devices[0].vendor
+            loaded_information.devices[1].name,
+            original_gpu_information.devices[1].name
         );
         assert_eq!(
-            loaded_status.devices[1].vendor,
-            original_status.devices[1].vendor
+            loaded_information.devices[0].vendor,
+            original_gpu_information.devices[0].vendor
+        );
+        assert_eq!(
+            loaded_information.devices[1].vendor,
+            original_gpu_information.devices[1].vendor
         );
     }
 
     #[tokio::test]
-    async fn test_save_empty_status_file() {
+    async fn test_save_empty_information_file() {
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path, KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path, KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
-        let empty_status = GpuStatusFile { devices: vec![] };
+        let empty_gpu_information = GpuInformationFile { devices: vec![] };
 
-        // Test saving empty file
-        let save_result = manager.save(&empty_status).await;
+        let save_result = manager.save(&empty_gpu_information).await;
 
         assert!(save_result.is_err());
         assert!(matches!(
             save_result.unwrap_err(),
-            GpuStatusFileError::EmptyDeviceList
+            GpuInformationFileError::EmptyDeviceList
         ));
     }
 
@@ -222,16 +202,16 @@ mod tests {
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path, KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path, KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
         let result = manager.load().await;
 
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            GpuStatusFileError::FileNotFound { path } if path == manager.file_path().clone()
+            GpuInformationFileError::FileNotFound { path } if path == manager.file_path().clone()
         ));
     }
 
@@ -240,28 +220,24 @@ mod tests {
         let temp_dir = create_temp_dir();
         let nested_dir = temp_dir.path().join("nested").join("directories");
 
-        // Directory doesn't exist yet
         assert!(!nested_dir.exists());
 
-        let manager = GpuStatusFileManager::new(nested_dir.clone(), KernelType::OpenCL).await;
+        let manager = GpuInformationFileManager::new(nested_dir.clone(), KernelType::OpenCL).await;
 
-        // Should fail because directory doesn't exist
         assert!(manager.is_err());
 
-        // Create the directory first
         fs::create_dir_all(&nested_dir)
             .await
             .expect("Failed to create nested directory");
 
-        let manager = GpuStatusFileManager::new(nested_dir, KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(nested_dir, KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
-        let status = create_sample_status_file();
+        let information = create_sample_information_file();
 
-        // This should succeed and create the file
         manager
-            .save(&status)
+            .save(&information)
             .await
             .expect("Failed to save to nested directory");
 
@@ -273,23 +249,20 @@ mod tests {
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path, KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path, KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
-        let status = create_sample_status_file();
+        let gpu_information = create_sample_information_file();
 
-        // Save the file
         manager
-            .save(&status)
+            .save(&gpu_information)
             .await
-            .expect("Failed to save GPU status file");
+            .expect("Failed to save GPU information file");
 
-        // Verify no temporary file exists after successful save
         let temp_path = manager.file_path().with_extension("tmp");
         assert!(!temp_path.exists());
 
-        // Verify the actual file exists
         assert!(manager.file_path().exists());
     }
 
@@ -298,33 +271,40 @@ mod tests {
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path, KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path, KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
         // Perform multiple save/load cycles
         for i in 0..5 {
-            let mut status = create_sample_status_file();
+            let mut gpu_information = create_sample_information_file();
 
             // Modify device names to make them unique for each cycle
-            for device in &mut status.devices {
+            for device in &mut gpu_information.devices {
                 device.name = format!("{} - Cycle {}", device.name, i);
             }
 
             // Save
             manager
-                .save(&status)
+                .save(&gpu_information)
                 .await
                 .expect(&format!("Failed to save on cycle {}", i));
 
             // Load and verify
-            let loaded_status = manager
+            let loaded_gpu_information = manager
                 .load()
                 .await
                 .expect(&format!("Failed to load on cycle {}", i));
 
-            assert_eq!(loaded_status.devices.len(), status.devices.len());
-            for (original, loaded) in status.devices.iter().zip(loaded_status.devices.iter()) {
+            assert_eq!(
+                loaded_gpu_information.devices.len(),
+                gpu_information.devices.len()
+            );
+            for (original, loaded) in gpu_information
+                .devices
+                .iter()
+                .zip(loaded_gpu_information.devices.iter())
+            {
                 assert_eq!(original.name, loaded.name);
                 assert_eq!(original.device_id, loaded.device_id);
                 assert_eq!(original.vendor, loaded.vendor);
@@ -337,17 +317,16 @@ mod tests {
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path, KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path, KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
-        let status = create_sample_status_file();
+        let gpu_information = create_sample_information_file();
 
-        // Save the file
         manager
-            .save(&status)
+            .save(&gpu_information)
             .await
-            .expect("Failed to save GPU status file");
+            .expect("Failed to save GPU information file");
 
         // Read the raw file content and verify it's valid JSON
         let file_content = fs::read_to_string(manager.file_path())
@@ -378,9 +357,9 @@ mod tests {
         let temp_dir = create_temp_dir();
         let dir_path = temp_dir.path().to_path_buf();
 
-        let manager = GpuStatusFileManager::new(dir_path, KernelType::OpenCL)
+        let manager = GpuInformationFileManager::new(dir_path, KernelType::OpenCL)
             .await
-            .expect("Failed to create GpuStatusFileManager");
+            .expect("Failed to create GpuInformationFileManager");
 
         // Write malformed JSON to the file
         let malformed_json = r#"{"devices": [{"name": "Test", "incomplete": true"#;
@@ -393,7 +372,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            GpuStatusFileError::DeserializationError { .. }
+            GpuInformationFileError::DeserializationError { .. }
         ));
     }
 
@@ -404,15 +383,15 @@ mod tests {
 
         // Initialize the manager once and share it
         let manager = std::sync::Arc::new(
-            GpuStatusFileManager::new(dir_path, KernelType::OpenCL)
+            GpuInformationFileManager::new(dir_path, KernelType::OpenCL)
                 .await
-                .expect("Failed to create GpuStatusFileManager"),
+                .expect("Failed to create GpuInformationFileManager"),
         );
 
         // First, save an initial state
-        let initial_status = create_sample_status_file();
+        let initial_gpu_information = create_sample_information_file();
         manager
-            .save(&initial_status)
+            .save(&initial_gpu_information)
             .await
             .expect("Failed to save initial state");
 
@@ -426,14 +405,14 @@ mod tests {
                 tokio::time::sleep(tokio::time::Duration::from_millis(i * 2)).await;
 
                 // Load and verify we can read something valid
-                let loaded_status = manager_clone
+                let loaded_gpu_information = manager_clone
                     .load()
                     .await
                     .expect(&format!("Failed to load in task {}", i));
 
                 // Verify structure is correct
-                assert!(!loaded_status.devices.is_empty());
-                assert_eq!(loaded_status.devices.len(), 2);
+                assert!(!loaded_gpu_information.devices.is_empty());
+                assert_eq!(loaded_gpu_information.devices.len(), 2);
             });
 
             handles.push(handle);
@@ -445,11 +424,11 @@ mod tests {
         }
 
         // Test a single write after all reads to ensure the file is still accessible
-        let mut final_status = create_sample_status_file();
-        final_status.devices[0].name = "Final Test Device".to_string();
+        let mut final_gpu_information = create_sample_information_file();
+        final_gpu_information.devices[0].name = "Final Test Device".to_string();
 
         manager
-            .save(&final_status)
+            .save(&final_gpu_information)
             .await
             .expect("Final save failed");
 
