@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 use tokio::{
     fs::{self, OpenOptions},
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
 };
 
 static LOG_TARGET: &str = "tari::graxil::gpu_status_file";
@@ -184,13 +184,24 @@ impl GpuStatusFileManager {
             });
         }
 
-        let contents =
-            fs::read_to_string(&self.file_path)
-                .await
-                .map_err(|e| GpuStatusFileError::IoError {
-                    path: self.file_path.clone(),
-                    source: e,
-                })?;
+        let file = OpenOptions::new()
+            .read(true)
+            .open(&self.file_path)
+            .await
+            .map_err(|e| GpuStatusFileError::IoError {
+                path: self.file_path.clone(),
+                source: e,
+            })?;
+
+        let mut reader = BufReader::new(file);
+        let mut contents = String::new();
+        reader
+            .read_to_string(&mut contents)
+            .await
+            .map_err(|e| GpuStatusFileError::IoError {
+                path: self.file_path.clone(),
+                source: e,
+            })?;
 
         let status: GpuStatusFile = serde_json::from_str(&contents).map_err(|e| {
             GpuStatusFileError::DeserializationError {
