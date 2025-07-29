@@ -10,7 +10,6 @@
 
 use anyhow::{Error, Result};
 use log::{debug, error, info, warn};
-use opencl3::device;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,7 +20,7 @@ use super::opencl::{OpenClDevice, OpenClEngine};
 use crate::core::types::{GpuSettings, MiningJob};
 use crate::miner::gpu::gpu_information_file::GpuInformationFileDevice;
 use crate::miner::gpu::{
-    GpuInformationFile, GpuInformationFileError, GpuInformationFileManager, KernelType,
+    GpuInformationFile, GpuInformationFileManager, KernelType,
 };
 use crate::miner::stats::MinerStats;
 use crate::miner::stats::gpu_info::GpuVendor;
