@@ -86,6 +86,24 @@ impl Default for GpuSettings {
                   For detailed help, use: sha3x-miner --help"
 )]
 pub struct Args {
+    /// Detect available GPU devices and save to information file
+    #[arg(
+        long,
+        alias = "detect",
+        default_value = "false",
+        help = "Detect available GPUs and save them to information file"
+    )]
+    pub detect: bool,
+
+    /// Path to the GPU information file directory
+    #[arg(
+        long,
+        alias = "information-file-dir",
+        value_name = "DIR",
+        help = "Directory to save GPU information file"
+    )]
+    pub information_file_dir: Option<PathBuf>,
+
     /// (Optional) Directory to store logs
     #[arg(long, alias = "log-dir", value_name = "log-dir")]
     pub log_dir: Option<PathBuf>,
@@ -227,6 +245,18 @@ pub struct Args {
     pub test_sv2: bool,
 
     // GPU Control Parameters (available in gpu and hybrid features)
+    /// Exclude specific GPU devices from mining
+    /// Indexes are 0-based (e.g., 0,1,2 for first 3 GPUs)
+    /// Useful for multi-GPU systems where some GPUs are not suitable for mining
+    /// Example: --excluded-devices 0,2 excludes first and third GPUs
+    #[cfg(any(feature = "gpu", feature = "hybrid"))]
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "Indexes of GPUs to exclude from mining (0-based, comma-separated) [e.g., 0,2 excludes first and third GPUs]"
+    )]
+    pub excluded_devices: Option<String>,
+
     /// GPU mining intensity as percentage (0-100%)
     /// Controls overall GPU workload: 100% = maximum performance, 85% = balanced, 70% = power efficient
     /// Lower values reduce power consumption and heat generation

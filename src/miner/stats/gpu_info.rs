@@ -21,7 +21,7 @@
 // - Extensible architecture for future AMD/Intel GPU support
 
 use log::{debug, info, warn};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -56,12 +56,37 @@ pub struct GpuInfo {
 }
 
 /// GPU vendor enumeration
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum GpuVendor {
     NVIDIA,
     AMD,
     Intel,
     Unknown,
+}
+
+impl GpuVendor {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GpuVendor::NVIDIA => "NVIDIA",
+            GpuVendor::AMD => "AMD",
+            GpuVendor::Intel => "Intel",
+            GpuVendor::Unknown => "Unknown",
+        }
+    }
+
+    pub fn from_str(string_name: &str) -> Self {
+        let sanitized_name = string_name.to_lowercase();
+        let sanitized_name = sanitized_name.trim().to_string();
+        if sanitized_name.contains("nvidia") {
+            GpuVendor::NVIDIA
+        } else if sanitized_name.contains("amd") {
+            GpuVendor::AMD
+        } else if sanitized_name.contains("intel") {
+            GpuVendor::Intel
+        } else {
+            GpuVendor::Unknown
+        }
+    }
 }
 
 /// GPU detection result for better error handling

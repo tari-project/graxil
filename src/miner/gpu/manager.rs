@@ -10,6 +10,8 @@
 
 use anyhow::{Error, Result};
 use log::{debug, error, info, warn};
+use opencl3::device;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::Receiver;
@@ -17,7 +19,12 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use super::opencl::{OpenClDevice, OpenClEngine};
 use crate::core::types::{GpuSettings, MiningJob};
+use crate::miner::gpu::gpu_information_file::GpuInformationFileDevice;
+use crate::miner::gpu::{
+    GpuInformationFile, GpuInformationFileError, GpuInformationFileManager, KernelType,
+};
 use crate::miner::stats::MinerStats;
+use crate::miner::stats::gpu_info::GpuVendor;
 
 const LOG_TARGET: &str = "tari::graxil::manager";
 
@@ -37,7 +44,8 @@ pub struct GpuManager {
     pub threads: Vec<GpuMiningThread>,
     initialized: bool,
     gpu_settings: GpuSettings,
-    thread_id_offset: usize, // For hybrid mode thread coordination
+    excluded_devices: Vec<u32>, // Excluded devices by ID
+    thread_id_offset: usize,    // For hybrid mode thread coordination
 }
 
 impl GpuManager {
@@ -49,12 +57,13 @@ impl GpuManager {
             threads: Vec::new(),
             initialized: false,
             gpu_settings: GpuSettings::default(),
-            thread_id_offset: 0, // Default: GPU uses thread ID 0
+            excluded_devices: Vec::new(), // No excluded devices by default
+            thread_id_offset: 0,          // Default: GPU uses thread ID 0
         }
     }
 
     /// Create a new GPU manager with settings
-    pub fn new_with_settings(settings: GpuSettings) -> Self {
+    pub fn new_with_settings(settings: GpuSettings, excluded_devices: Vec<u32>) -> Self {
         info!(target: LOG_TARGET,
             "Creating GPU manager with settings: intensity={}%, batch={:?}",
             settings.intensity, settings.batch_size
@@ -65,6 +74,7 @@ impl GpuManager {
             initialized: false,
             gpu_settings: settings,
             thread_id_offset: 0,
+            excluded_devices,
         }
     }
 
@@ -140,12 +150,13 @@ impl GpuManager {
             .into_iter()
             .filter(|device| {
                 let suitable = device.is_suitable_for_mining();
-                if suitable {
+                let is_excluded = self.excluded_devices.contains(&device.device_id());
+                if suitable && !is_excluded {
                     info!(target: LOG_TARGET,"✅ Found suitable GPU: {}", device.info_string());
                 } else {
                     warn!(target: LOG_TARGET,"⚠️ GPU not suitable for mining: {}", device.info_string());
                 }
-                suitable
+                suitable && !is_excluded
             })
             .collect();
 
@@ -570,6 +581,51 @@ impl GpuManager {
             GpuSettings::default(),
         )
         .await;
+    }
+
+    pub async fn generate_information_files(directory_path: PathBuf) -> Result<(), anyhow::Error> {
+        // Create GPU information file manager
+        let information_file_manager =
+            GpuInformationFileManager::new(directory_path, KernelType::OpenCL).await?;
+
+        match OpenClDevice::detect_devices() {
+            Ok(device) => {
+                let information_file_devices: Vec<GpuInformationFileDevice> = device
+                    .into_iter()
+                    .map(|device| {
+                        let vendor = &device
+                            .device()
+                            .vendor()
+                            .unwrap_or_else(|_| "Unknown".to_string());
+                        let vendor = GpuVendor::from_str(vendor);
+
+                        let device = GpuInformationFileDevice {
+                            name: device.name().to_string(),
+                            device_id: device.device_id(),
+                            platform_name: device.platform_name().to_string(),
+                            vendor,
+                            max_work_group_size: device.max_work_group_size(),
+                            max_compute_units: device.max_compute_units(),
+                            global_mem_size: device.global_mem_size(),
+                            device_type: device.device_type().clone(),
+                        };
+
+                        device
+                    })
+                    .collect();
+
+                information_file_manager
+                    .save(&GpuInformationFile {
+                        devices: information_file_devices,
+                    })
+                    .await?;
+            }
+            Err(e) => {
+                error!(target: LOG_TARGET, "Failed to detect GPU devices: {}", e);
+            }
+        }
+
+        Ok(())
     }
 }
 

@@ -8,7 +8,7 @@
 // Feature-based mining with proper thread coordination: --features cpu, --features gpu, --features hybrid
 
 use clap::Parser;
-use log::info;
+use log::{error, info};
 use sha3x_miner::{
     Result,
     benchmark::runner::BenchmarkRunner,
@@ -77,20 +77,47 @@ async fn main() -> Result<()> {
 #[cfg(all(feature = "gpu", not(feature = "hybrid")))]
 #[tokio::main]
 async fn main() -> Result<()> {
+    use std::env;
+
     let args = Args::parse();
 
-    if let Some(ref log_dir) = args.log_dir {
-        tari_common::initialize_logging(
-            &log_dir.join("graxil").join("log4rs_config.yml"),
-            &log_dir.join("graxil"),
-            include_str!("../log4rs_sample.yml"),
-        )
-        .expect("Could not set up logging");
-    }
+    let logs_directory = args.log_dir.clone().unwrap_or(
+        env::current_dir()
+            .expect("Could not get current directory")
+            .join("logs"),
+    );
+
+    tari_common::initialize_logging(
+        &logs_directory.join("graxil").join("log4rs_config.yml"),
+        &logs_directory.join("graxil"),
+        include_str!("../log4rs_sample.yml"),
+    )
+    .expect("Could not set up logging");
 
     // Check for SV2 test mode first
     if args.test_sv2 {
         return handle_sv2_test(&args).await;
+    }
+
+    if args.detect {
+        if let Some(information_file_directory) = args.information_file_dir {
+            use sha3x_miner::miner::GpuManager;
+
+            info!(target: LOG_TARGET, "🔍 Detecting OpenCL devices...");
+            match GpuManager::generate_information_files(information_file_directory).await {
+                Ok(_) => info!(target: LOG_TARGET, "✅ Device detection complete!"),
+                Err(e) => {
+                    error!(target: LOG_TARGET, "❌ Failed to detect devices: {}", e);
+                    return Err(e.into());
+                }
+            }
+        } else {
+            eprintln!("❌ --information-file-dir is required for device detection");
+            std::process::exit(1);
+        }
+
+        info!(target: LOG_TARGET, "🔍 Device detection complete! Check information files in the specified directory.");
+        return Ok(());
     }
 
     // Validate arguments
@@ -328,7 +355,17 @@ async fn handle_gpu_mining(args: &Args, algo: Algorithm) -> Result<()> {
     // Create GPU manager with settings applied
     use sha3x_miner::miner::gpu::{GpuManager, GpuMiner};
 
-    let gpu_manager = GpuManager::new_with_settings(gpu_settings.clone());
+    let mut excluded_devices: Vec<u32> = Vec::new();
+
+    if let Some(excluded) = &args.excluded_devices {
+        // Parse excluded devices from comma-separated string
+        excluded_devices = excluded
+            .split(',')
+            .filter_map(|s| s.trim().parse::<u32>().ok())
+            .collect();
+    }
+
+    let gpu_manager = GpuManager::new_with_settings(gpu_settings.clone(), excluded_devices);
 
     // *** CRITICAL FIX: Use new_with_settings instead of new() ***
     let gpu_miner = match GpuMiner::new_with_settings(
