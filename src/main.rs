@@ -8,13 +8,13 @@
 // Feature-based mining with proper thread coordination: --features cpu, --features gpu, --features hybrid
 
 use clap::Parser;
-use log::{error, info};
-use sha3x_miner::{
+use graxil::{
     Result,
     benchmark::runner::BenchmarkRunner,
     core::types::{Algorithm, Args},
     miner::CpuMiner,
 };
+use log::{error, info};
 
 // Web server module for real-time mining dashboard
 mod web_server;
@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
 
     if args.detect {
         if let Some(information_file_directory) = args.information_file_dir {
-            use sha3x_miner::miner::GpuManager;
+            use graxil::miner::GpuManager;
 
             info!(target: LOG_TARGET, "🔍 Detecting OpenCL devices...");
             match GpuManager::generate_information_files(information_file_directory).await {
@@ -353,7 +353,7 @@ async fn handle_gpu_mining(args: &Args, algo: Algorithm) -> Result<()> {
 
     use log::info;
     // Create GPU manager with settings applied
-    use sha3x_miner::miner::gpu::{GpuManager, GpuMiner};
+    use graxil::miner::gpu::{GpuManager, GpuMiner};
 
     let mut excluded_devices: Vec<u32> = Vec::new();
 

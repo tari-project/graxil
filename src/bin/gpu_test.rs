@@ -2,9 +2,9 @@
 // File: src/bin/gpu_test.rs
 // Version: 1.0.1 - Added XN field support
 
+use graxil::core::types::MiningJob;
+use graxil::miner::gpu::opencl::{OpenClDevice, OpenClEngine};
 use log::{error, info};
-use sha3x_miner::core::types::MiningJob;
-use sha3x_miner::miner::gpu::opencl::{OpenClDevice, OpenClEngine};
 use std::time::Instant;
 
 const LOG_TARGET: &str = "tari::graxil::gpu_test";
@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
         target_difficulty: 1000000, // Easy target for testing
         height: 12345,
-        algo: sha3x_miner::core::types::Algorithm::Sha3x,
+        algo: graxil::core::types::Algorithm::Sha3x,
         extranonce2: None, // ✅ Added XN field support - no XN for test job
         prev_hash: None,
         merkle_root: None,
@@ -149,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mining_hash: test_job.mining_hash.clone(),
         target_difficulty: 1000000,
         height: 12345,
-        algo: sha3x_miner::core::types::Algorithm::Sha3x,
+        algo: graxil::core::types::Algorithm::Sha3x,
         extranonce2: Some("ad49".to_string()), // ✅ Simulate LuckyPool XN
         prev_hash: None,
         merkle_root: None,
