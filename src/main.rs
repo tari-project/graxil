@@ -8,13 +8,13 @@
 // Feature-based mining with proper thread coordination: --features cpu, --features gpu, --features hybrid
 
 use clap::Parser;
-use log::{error, info};
-use sha3x_miner::{
+use graxil::{
     Result,
     benchmark::runner::BenchmarkRunner,
     core::types::{Algorithm, Args},
     miner::CpuMiner,
 };
+use log::{error, info};
 
 // Web server module for real-time mining dashboard
 mod web_server;
@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
 
     if args.detect {
         if let Some(information_file_directory) = args.information_file_dir {
-            use sha3x_miner::miner::GpuManager;
+            use graxil::miner::GpuManager;
 
             info!(target: LOG_TARGET, "🔍 Detecting OpenCL devices...");
             match GpuManager::generate_information_files(information_file_directory).await {
@@ -353,7 +353,7 @@ async fn handle_gpu_mining(args: &Args, algo: Algorithm) -> Result<()> {
 
     use log::info;
     // Create GPU manager with settings applied
-    use sha3x_miner::miner::gpu::{GpuManager, GpuMiner};
+    use graxil::miner::gpu::{GpuManager, GpuMiner};
 
     let mut excluded_devices: Vec<u32> = Vec::new();
 
@@ -458,7 +458,7 @@ async fn handle_hybrid_mining(args: &Args, algo: Algorithm) -> Result<()> {
     );
 
     // Check GPU availability and get device count
-    use sha3x_miner::miner::gpu::GpuManager;
+    use graxil::miner::gpu::GpuManager;
     if !GpuManager::is_available() {
         error!(target: LOG_TARGET,"❌ No suitable GPU found for hybrid mining!");
         error!(target: LOG_TARGET,"💡 Falling back to CPU-only mode...");
@@ -503,7 +503,7 @@ async fn handle_hybrid_mining(args: &Args, algo: Algorithm) -> Result<()> {
     info!(target: LOG_TARGET,"└─ Total Threads: {}", gpu_count + cpu_thread_count);
 
     // *** CREATE UNIFIED STATS FOR ALL THREADS ***
-    use sha3x_miner::miner::stats::MinerStats;
+    use graxil::miner::stats::MinerStats;
 
     let total_threads = gpu_count + cpu_thread_count; // Dynamic based on actual GPU count
     let mut unified_stats = MinerStats::new(total_threads);
@@ -594,7 +594,7 @@ async fn handle_hybrid_mining(args: &Args, algo: Algorithm) -> Result<()> {
 /// Fallback to CPU-only mining if GPU fails in hybrid mode
 #[cfg(feature = "hybrid")]
 async fn handle_cpu_fallback(args: &Args, algo: Algorithm) -> Result<()> {
-    use sha3x_miner::miner::CpuMiner;
+    use graxil::miner::CpuMiner;
 
     info!(target: LOG_TARGET,"🔄 Initializing CPU-only fallback mode...");
 
@@ -627,11 +627,11 @@ async fn handle_cpu_fallback(args: &Args, algo: Algorithm) -> Result<()> {
 async fn create_multi_gpu_cpu_miner(
     args: &Args,
     algo: Algorithm,
-    shared_stats: Arc<sha3x_miner::miner::stats::MinerStats>,
+    shared_stats: Arc<graxil::miner::stats::MinerStats>,
     gpu_count: usize, // Dynamic GPU count for proper thread offset
     cpu_thread_count: usize,
-) -> Result<Arc<sha3x_miner::miner::CpuMiner>> {
-    use sha3x_miner::miner::CpuMiner;
+) -> Result<Arc<graxil::miner::CpuMiner>> {
+    use graxil::miner::CpuMiner;
 
     info!(target: LOG_TARGET,"🧵 Creating multi-GPU aware CPU miner component...");
     info!(target: LOG_TARGET,
@@ -669,11 +669,11 @@ async fn create_multi_gpu_cpu_miner(
 async fn create_multi_gpu_gpu_miner(
     args: &Args,
     algo: Algorithm,
-    gpu_manager: sha3x_miner::miner::gpu::GpuManager,
-    shared_stats: Arc<sha3x_miner::miner::stats::MinerStats>,
-    gpu_settings: sha3x_miner::core::types::GpuSettings,
-) -> Result<Arc<sha3x_miner::miner::gpu::GpuMiner>> {
-    use sha3x_miner::miner::gpu::GpuMiner;
+    gpu_manager: graxil::miner::gpu::GpuManager,
+    shared_stats: Arc<graxil::miner::stats::MinerStats>,
+    gpu_settings: graxil::core::types::GpuSettings,
+) -> Result<Arc<graxil::miner::gpu::GpuMiner>> {
+    use graxil::miner::gpu::GpuMiner;
 
     let gpu_count = gpu_manager.device_count();
     info!(target: LOG_TARGET,"🎮 Creating multi-GPU aware GPU miner component...");
@@ -691,7 +691,7 @@ async fn create_multi_gpu_gpu_miner(
         gpu_manager,
         gpu_settings.clone(), // ✅ Apply GPU settings
         shared_stats,         // ✅ Shared stats for unified dashboard
-        Arc::new(sha3x_miner::pool::client::PoolClient::new()), // ✅ Independent pool client
+        Arc::new(graxil::pool::client::PoolClient::new()), // ✅ Independent pool client
         0,                    // ✅ GPU threads start at 0 (will handle multiple devices internally)
     )?;
 

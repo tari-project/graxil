@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use sha3x_miner::miner::gpu::GpuInformationFileError;
-    use sha3x_miner::miner::gpu::gpu_information_file::{
+    use graxil::miner::gpu::GpuInformationFileError;
+    use graxil::miner::gpu::gpu_information_file::{
         GpuInformationFile, GpuInformationFileDevice, GpuInformationFileManager, KernelType,
     };
-    use sha3x_miner::miner::{gpu::opencl::device::GpuDeviceType, stats::gpu_info::GpuVendor};
+    use graxil::miner::{gpu::opencl::device::GpuDeviceType, stats::gpu_info::GpuVendor};
     use std::path::PathBuf;
     use tempfile::{TempDir, tempdir};
     use tokio::fs;
@@ -88,17 +88,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_gpu_information_file_manager_new_invalid_directory() {
-        let non_existent_path = PathBuf::from("/non/existent/directory");
+    async fn test_gpu_information_file_manager_new_creates_missing_directory() {
+        let non_existent_path = PathBuf::from("/tmp/non_existent_test_directory");
+
+        // Ensure the directory doesn't exist before the test
+        if non_existent_path.exists() {
+            fs::remove_dir_all(&non_existent_path)
+                .await
+                .expect("Failed to clean up test directory");
+        }
 
         let result =
             GpuInformationFileManager::new(non_existent_path.clone(), KernelType::OpenCL).await;
 
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            GpuInformationFileError::NotADirectory { path } if path == non_existent_path
-        ));
+        // Should succeed now since the directory will be created automatically
+        assert!(result.is_ok());
+
+        let manager = result.unwrap();
+        assert_eq!(manager.directory_path(), &non_existent_path);
+        assert!(non_existent_path.exists());
+        assert!(non_existent_path.is_dir());
+
+        // Clean up the created directory
+        fs::remove_dir_all(&non_existent_path)
+            .await
+            .expect("Failed to clean up test directory");
     }
 
     #[tokio::test]
@@ -216,23 +230,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_save_creates_directory() {
+    async fn test_automatically_creates_nested_directory() {
         let temp_dir = create_temp_dir();
         let nested_dir = temp_dir.path().join("nested").join("directories");
 
+        // Ensure the nested directory doesn't exist initially
         assert!(!nested_dir.exists());
 
-        let manager = GpuInformationFileManager::new(nested_dir.clone(), KernelType::OpenCL).await;
-
-        assert!(manager.is_err());
-
-        fs::create_dir_all(&nested_dir)
+        // Now with auto-directory creation, this should succeed
+        let manager = GpuInformationFileManager::new(nested_dir.clone(), KernelType::OpenCL)
             .await
-            .expect("Failed to create nested directory");
+            .expect("Failed to create GpuInformationFileManager - directory should be created automatically");
 
-        let manager = GpuInformationFileManager::new(nested_dir, KernelType::OpenCL)
-            .await
-            .expect("Failed to create GpuInformationFileManager");
+        // Verify the directory was created
+        assert!(nested_dir.exists());
+        assert!(nested_dir.is_dir());
 
         let information = create_sample_information_file();
 

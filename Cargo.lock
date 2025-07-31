@@ -588,14 +588,13 @@ dependencies = [
 
 [[package]]
 name = "cl3"
-version = "0.13.0"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a50168bca6baeb04c8aec60adba5917221034d96275f6b199be66a3969519f1"
+checksum = "b823f24e72fa0c68aa14a250ae1c0848e68d4ae188b71c3972343e45b46f8644"
 dependencies = [
- "dlopen2",
  "libc",
  "opencl-sys",
- "thiserror 2.0.12",
+ "thiserror",
 ]
 
 [[package]]
@@ -1007,29 +1006,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dlopen2"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1297103d2bbaea85724fcee6294c2d50b1081f9ad47d0f6f6f61eda65315a6"
-dependencies = [
- "dlopen2_derive",
- "libc",
- "once_cell",
- "winapi",
-]
-
-[[package]]
-name = "dlopen2_derive"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "788160fb30de9cdd857af31c6a2675904b16ece8fc2737b2c7127ba368c9d0f4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.104",
-]
-
-[[package]]
 name = "doc-comment"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1223,6 +1199,44 @@ name = "gimli"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
+
+[[package]]
+name = "graxil"
+version = "1.0.9"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "axum",
+ "binary_sv2",
+ "clap 4.5.41",
+ "codec_sv2",
+ "crossbeam",
+ "crossterm",
+ "framing_sv2",
+ "hex",
+ "log",
+ "log4rs",
+ "noise_sv2",
+ "num_cpus",
+ "opencl3",
+ "rand",
+ "ratatui",
+ "roles_logic_sv2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "sysinfo",
+ "tari_common",
+ "tari_common_types",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tower 0.4.13",
+ "tower-http",
+ "uint 0.10.0",
+]
 
 [[package]]
 name = "group"
@@ -1770,7 +1784,7 @@ dependencies = [
  "serde-value",
  "serde_json",
  "serde_yaml",
- "thiserror 1.0.69",
+ "thiserror",
  "thread-id",
  "typemap-ors",
  "winapi",
@@ -2025,18 +2039,18 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "opencl-sys"
-version = "0.6.0"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6edabf61284e58c345821019106a2e68f8a61eb732c0d2b214a78af24499855c"
+checksum = "de15dd01496ae90c5799f5266184ab020082b4065800ff0b732f489371d0e5cf"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "opencl3"
-version = "0.12.0"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aafde8b7b7c0c6a50baa7fe294eabce788d7a4977d461f93545eb0e6ecd34ab3"
+checksum = "26ab4a90cb496f787d3934deb0c54fa9d65e7bed710c10071234aab0196fba04"
 dependencies = [
  "cl3",
  "libc",
@@ -2214,7 +2228,7 @@ version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17d47ce914bf4de440332250b0edd23ce48c005f59fab39d3335866b114f11a"
 dependencies = [
- "thiserror 1.0.69",
+ "thiserror",
  "toml 0.5.11",
 ]
 
@@ -2349,7 +2363,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom 0.2.16",
  "libredox",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -2414,7 +2428,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2596,44 +2610,6 @@ checksum = "75872d278a8f37ef87fa0ddbda7802605cb18344497949862c0d4dcb291eba60"
 dependencies = [
  "digest",
  "keccak",
-]
-
-[[package]]
-name = "sha3x-miner"
-version = "1.0.9"
-dependencies = [
- "anyhow",
- "async-channel",
- "axum",
- "binary_sv2",
- "clap 4.5.41",
- "codec_sv2",
- "crossbeam",
- "crossterm",
- "framing_sv2",
- "hex",
- "log",
- "log4rs",
- "noise_sv2",
- "num_cpus",
- "opencl3",
- "rand",
- "ratatui",
- "roles_logic_sv2",
- "serde",
- "serde_json",
- "sha2",
- "sha3",
- "sysinfo",
- "tari_common",
- "tari_common_types",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-tungstenite 0.21.0",
- "tower 0.4.13",
- "tower-http",
- "uint 0.10.0",
 ]
 
 [[package]]
@@ -2916,7 +2892,7 @@ dependencies = [
  "structopt",
  "tari_features",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -2944,7 +2920,7 @@ dependencies = [
  "tari_hashing",
  "tari_max_size",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -2993,7 +2969,7 @@ dependencies = [
  "borsh",
  "serde",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -3024,7 +3000,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.0.8",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3050,16 +3026,7 @@ version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
 dependencies = [
- "thiserror-impl 1.0.69",
-]
-
-[[package]]
-name = "thiserror"
-version = "2.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "567b8a2dae586314f7be2a752ec7474332959c6460e02bde30d702a66d488708"
-dependencies = [
- "thiserror-impl 2.0.12",
+ "thiserror-impl",
 ]
 
 [[package]]
@@ -3067,17 +3034,6 @@ name = "thiserror-impl"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.104",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "2.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3367,7 +3323,7 @@ dependencies = [
  "log",
  "rand",
  "sha1",
- "thiserror 1.0.69",
+ "thiserror",
  "url",
  "utf-8",
 ]
@@ -3386,7 +3342,7 @@ dependencies = [
  "log",
  "rand",
  "sha1",
- "thiserror 1.0.69",
+ "thiserror",
  "utf-8",
 ]
 

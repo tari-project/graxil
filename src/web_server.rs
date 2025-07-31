@@ -23,8 +23,8 @@ use axum::{
     response::{Html, Response},
     routing::get,
 };
+use graxil::miner::stats::MinerStats;
 use log::{debug, error, info};
-use sha3x_miner::miner::stats::MinerStats;
 use std::sync::Arc;
 
 const LOG_TARGET: &str = "tari::graxil::web_server";

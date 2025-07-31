@@ -2,7 +2,7 @@
 // This demonstrates the --detect functionality from src/main.rs
 
 use log::{error, info};
-use sha3x_miner::miner::gpu::GpuManager;
+use graxil::miner::gpu::GpuManager;
 use std::env;
 const LOG_TARGET: &str = "tari::graxil::device_detection_example";
 

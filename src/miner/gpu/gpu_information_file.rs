@@ -99,11 +99,14 @@ impl GpuInformationFileManager {
         directory_path: PathBuf,
         kernel_type: KernelType,
     ) -> Result<Self, GpuInformationFileError> {
-        if !directory_path.is_dir() {
+        // Check if the path exists and is a file (not a directory)
+        if directory_path.exists() && !directory_path.is_dir() {
             return Err(GpuInformationFileError::NotADirectory {
                 path: directory_path,
             });
         }
+
+        Self::ensure_directory_exists(directory_path.clone()).await?;
 
         let metadata =
             fs::metadata(&directory_path)
@@ -135,14 +138,16 @@ impl GpuInformationFileManager {
     }
 
     /// Ensure the directory exists, creating it if necessary.
-    async fn _ensure_directory_exists(&self) -> Result<(), GpuInformationFileError> {
-        if !self.directory_path.exists() {
-            fs::create_dir_all(&self.directory_path)
-                .await
-                .map_err(|e| GpuInformationFileError::IoError {
-                    path: self.directory_path.clone(),
+    async fn ensure_directory_exists(
+        directory_path: PathBuf,
+    ) -> Result<(), GpuInformationFileError> {
+        if !directory_path.exists() {
+            fs::create_dir_all(&directory_path).await.map_err(|e| {
+                GpuInformationFileError::IoError {
+                    path: directory_path.clone(),
                     source: e,
-                })?;
+                }
+            })?;
         }
         Ok(())
     }
@@ -154,8 +159,6 @@ impl GpuInformationFileManager {
         &self,
         information_file_content: &GpuInformationFile,
     ) -> Result<(), GpuInformationFileError> {
-        self._ensure_directory_exists().await?;
-
         debug!(target: LOG_TARGET, "Writing GPU information file to {:?}", self.file_path);
 
         let contents = serde_json::to_vec_pretty(information_file_content)?; // Auto-converts due to #[from]

@@ -53,6 +53,7 @@
     "target": "x86_64-pc-windows-msvc",
     "cross": false,
     "features": "gpu",
+    "rustflags": "-L C:/vcpkg/packages/opencl_x64-windows/lib",
     "build_enabled": true
   },
   {
@@ -63,6 +64,7 @@
     "cross": false,
     "features": "gpu",
     "build_enabled": true,
+    "rustflags": "-L C:/vcpkg/packages/opencl_x64-windows/lib",
     "best_effort": true
   }
 ]

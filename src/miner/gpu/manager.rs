@@ -19,9 +19,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use super::opencl::{OpenClDevice, OpenClEngine};
 use crate::core::types::{GpuSettings, MiningJob};
 use crate::miner::gpu::gpu_information_file::GpuInformationFileDevice;
-use crate::miner::gpu::{
-    GpuInformationFile, GpuInformationFileManager, KernelType,
-};
+use crate::miner::gpu::{GpuInformationFile, GpuInformationFileManager, KernelType};
 use crate::miner::stats::MinerStats;
 use crate::miner::stats::gpu_info::GpuVendor;
 
@@ -621,6 +619,7 @@ impl GpuManager {
             }
             Err(e) => {
                 error!(target: LOG_TARGET, "Failed to detect GPU devices: {}", e);
+                return Err(Error::msg(format!("Failed to detect GPU devices: {}", e)));
             }
         }
 
