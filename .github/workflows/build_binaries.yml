@@ -140,7 +140,7 @@ jobs:
 
       - name: Install nVida cuda toolkit
         uses: jimver/cuda-toolkit@v0.2.26
-        # if: contains(matrix.builds.features, 'nvidia')
+        if: contains(matrix.builds.features, 'nvidia')
         with:
           method: network
           sub-packages: '["nvcc", "cudart"]'
