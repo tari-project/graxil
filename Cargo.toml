@@ -14,7 +14,7 @@
 # binary targets for building the miner, supporting SHA3X (Tari) mining with CPU, GPU, and hybrid modes.
 
 [package]
-name = "sha3x-miner"
+name = "graxil"
 version = "1.0.9"
 edition = "2024"
 description = "High-performance SHA3x (Tari) CPU/GPU miner with hybrid mode"

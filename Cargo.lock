@@ -1201,6 +1201,44 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 
 [[package]]
+name = "graxil"
+version = "1.0.9"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "axum",
+ "binary_sv2",
+ "clap 4.5.41",
+ "codec_sv2",
+ "crossbeam",
+ "crossterm",
+ "framing_sv2",
+ "hex",
+ "log",
+ "log4rs",
+ "noise_sv2",
+ "num_cpus",
+ "opencl3",
+ "rand",
+ "ratatui",
+ "roles_logic_sv2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "sysinfo",
+ "tari_common",
+ "tari_common_types",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tower 0.4.13",
+ "tower-http",
+ "uint 0.10.0",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2572,44 +2610,6 @@ checksum = "75872d278a8f37ef87fa0ddbda7802605cb18344497949862c0d4dcb291eba60"
 dependencies = [
  "digest",
  "keccak",
-]
-
-[[package]]
-name = "sha3x-miner"
-version = "1.0.9"
-dependencies = [
- "anyhow",
- "async-channel",
- "axum",
- "binary_sv2",
- "clap 4.5.41",
- "codec_sv2",
- "crossbeam",
- "crossterm",
- "framing_sv2",
- "hex",
- "log",
- "log4rs",
- "noise_sv2",
- "num_cpus",
- "opencl3",
- "rand",
- "ratatui",
- "roles_logic_sv2",
- "serde",
- "serde_json",
- "sha2",
- "sha3",
- "sysinfo",
- "tari_common",
- "tari_common_types",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-tungstenite 0.21.0",
- "tower 0.4.13",
- "tower-http",
- "uint 0.10.0",
 ]
 
 [[package]]
