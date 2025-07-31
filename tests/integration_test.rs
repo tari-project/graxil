@@ -20,10 +20,10 @@
 
 #[cfg(test)]
 mod tests {
-    use sha3x_miner::core::sha3x::sha3x_hash_with_nonce;
-    use sha3x_miner::core::difficulty::{calculate_difficulty, parse_target_difficulty};
-    use sha3x_miner::core::types::{MiningJob, PoolJob, Share};
-    use sha3x_miner::pool::messages::{parse_pool_message, PoolMessage};
+    use graxil::core::sha3x::sha3x_hash_with_nonce;
+    use graxil::core::difficulty::{calculate_difficulty, parse_target_difficulty};
+    use graxil::core::types::{MiningJob, PoolJob, Share};
+    use graxil::pool::messages::{parse_pool_message, PoolMessage};
     use hex;
 
     #[tokio::test]

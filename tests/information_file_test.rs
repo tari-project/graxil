@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use sha3x_miner::miner::gpu::GpuInformationFileError;
-    use sha3x_miner::miner::gpu::gpu_information_file::{
+    use graxil::miner::gpu::GpuInformationFileError;
+    use graxil::miner::gpu::gpu_information_file::{
         GpuInformationFile, GpuInformationFileDevice, GpuInformationFileManager, KernelType,
     };
-    use sha3x_miner::miner::{gpu::opencl::device::GpuDeviceType, stats::gpu_info::GpuVendor};
+    use graxil::miner::{gpu::opencl::device::GpuDeviceType, stats::gpu_info::GpuVendor};
     use std::path::PathBuf;
     use tempfile::{TempDir, tempdir};
     use tokio::fs;
