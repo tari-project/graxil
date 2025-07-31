@@ -154,7 +154,7 @@ jobs:
             protobuf-compiler
 
       - name: Install Linux dependencies - Ubuntu / OpenCL
-        if: ${{ startsWith(runner.os,'Linux') && contains(matrix.builds.features, 'opencl') }}
+        if: ${{ startsWith(runner.os,'Linux') }}
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends --assume-yes \
