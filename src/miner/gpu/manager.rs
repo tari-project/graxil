@@ -369,9 +369,32 @@ impl GpuManager {
         loop {
             // Check for new jobs (non-blocking)
             if let Ok(job) = job_rx.try_recv() {
-                debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
+                info!(target: LOG_TARGET,"🎮 GPU {} got new job: {:?}", thread_id, job);
+                if job.extranonce2.is_some() {
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} received job with extranonce2 (XN): {}",
+                        thread_id, job.extranonce2.as_ref().unwrap()
+                    );
+                    nonce_offset = u16::from_le_bytes(
+                        hex::decode(job.extranonce2.as_ref().unwrap())
+                            .unwrap()
+                            .try_into()
+                            .unwrap(),
+                    ) as u64;
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} nonce offset set to XN: {}",
+                        thread_id, nonce_offset
+                    );
+                } else {
+                    info!(target: LOG_TARGET,"🎮 GPU {} received job without extranonce2", thread_id);
+                    nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} nonce offset reset to: {}",
+                        thread_id, nonce_offset
+                    );
+                }
+
                 current_job = Some(job);
-                nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
                 continue; // Immediately start mining the new job
             }
 
@@ -410,6 +433,10 @@ impl GpuManager {
 
                         // Submit share if found
                         if let Some(nonce) = found_nonce {
+                            info!(target: LOG_TARGET,
+                                "🎮 GPU {} found share with nonce: {} ({} hashes processed)",
+                                thread_id, nonce, hashes_processed
+                            );
                             // FIXED: LuckyPool XN nonce generation - proper 8-byte format
                             let nonce_hex = if let Some(ref xn) = job.extranonce2 {
                                 // LuckyPool format: [2-byte-XN][6-byte-local] = 8 bytes total

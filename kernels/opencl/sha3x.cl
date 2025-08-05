@@ -153,11 +153,12 @@ kernel void sha3(global ulong *header_buffer, ulong nonce_start, ulong target_va
     }
     barrier(CLK_GLOBAL_MEM_FENCE);
     
-    ulong thread_nonce = nonce_start + get_global_id(0);
+    //ulong thread_nonce = nonce_start + get_global_id(0);
+  //  ulong thread_nonce = nonce_start  | ((get_global_id(0) + i * get_global_size(0))<<16);
     
     for (uint round = 0; round < num_rounds; round++) {
-        ulong current_nonce = thread_nonce + round * get_global_size(0);
-        
+        // ulong current_nonce = thread_nonce + round * get_global_size(0);
+        ulong current_nonce = nonce_start  | ((get_global_id(0) + round * get_global_size(0))<<16); 
         // Build SHA3x input exactly like CPU: nonce(8) + header(32) + marker(1) = 41 bytes
         uchar input[41];
         

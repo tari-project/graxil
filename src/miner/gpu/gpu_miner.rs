@@ -20,9 +20,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::Mutex;
 use tokio::sync::broadcast::{self, Sender as BroadcastSender};
 use tokio::sync::mpsc;
+use tokio::sync::{Mutex, RwLock};
 
 use super::manager::GpuManager;
 
@@ -38,6 +38,7 @@ pub struct GpuMiner {
     gpu_manager: GpuManager,
     gpu_settings: GpuSettings,
     external_stats: bool, // Flag to indicate if using shared stats for hybrid mode
+    last_xn: Arc<RwLock<Option<String>>>,
 }
 
 impl GpuMiner {
@@ -106,6 +107,7 @@ impl GpuMiner {
             gpu_manager,
             gpu_settings,
             external_stats: false,
+            last_xn: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -151,6 +153,7 @@ impl GpuMiner {
             gpu_manager,
             gpu_settings,
             external_stats: true,
+            last_xn: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -369,14 +372,23 @@ impl GpuMiner {
         job_data: &serde_json::Map<String, Value>,
         job_tx: &BroadcastSender<MiningJob>,
     ) -> Result<()> {
-        let job: PoolJob = serde_json::from_value(Value::Object(job_data.clone()))?;
+        info!(target: LOG_TARGET, "Job json: {:?}", &job_data);
+        let mut job: PoolJob = serde_json::from_value(Value::Object(job_data.clone()))?;
 
+        info!(target: LOG_TARGET, "New job: {:?}", &job);
         let header_template = hex::decode(&job.blob.unwrap_or_default())?;
         let target_difficulty = job
             .difficulty
             .unwrap_or_else(|| parse_target_difficulty(&job.target, self.algo));
 
         // FIXED: Handle XN (extra nonce) properly without borrow issues
+        if job.xn.is_none() {
+            job.xn = self.last_xn.read().await.clone();
+        } else {
+            info!(target: LOG_TARGET, "Setting last nonce to {:?}", &job.xn);
+            let mut lock = self.last_xn.write().await;
+            *lock = job.xn.clone();
+        }
         let xn_info = if let Some(ref xn) = job.xn {
             info!(target: LOG_TARGET,
                 "🔧 LuckyPool XN detected: {} (will be used as first 2 bytes of nonce)",
@@ -384,7 +396,7 @@ impl GpuMiner {
             );
             format!(" XN: {}", xn)
         } else {
-            String::new()
+            "no XN".to_string()
         };
 
         let mining_job = MiningJob {
