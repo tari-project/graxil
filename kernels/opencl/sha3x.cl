@@ -153,8 +153,6 @@ kernel void sha3(global ulong *header_buffer, ulong nonce_start,
   }
   barrier(CLK_GLOBAL_MEM_FENCE);
 
-  ulong thread_nonce = nonce_start + get_global_id(0);
-
   for (uint round = 0; round < num_rounds; round++) {
     ulong current_nonce =
         nonce_start | ((get_global_id(0) + round * get_global_size(0)) << 16);

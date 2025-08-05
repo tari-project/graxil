@@ -584,6 +584,7 @@ impl OpenClEngine {
             // Convert difficulty to target hash value
             // Higher difficulty = lower target value
             u64::MAX / job.target_difficulty
+            // u64::MAX / 100000000399u64
         } else {
             u64::MAX
         };

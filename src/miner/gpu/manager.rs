@@ -370,8 +370,31 @@ impl GpuManager {
             // Check for new jobs (non-blocking)
             if let Ok(job) = job_rx.try_recv() {
                 debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
-                current_job = Some(job);
-                nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                current_job = Some(job.clone());
+                info!(target: LOG_TARGET,"🎮 GPU {} got new job: {:?}", thread_id, job);
+                if job.extranonce2.is_some() {
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} received job with extranonce2 (XN): {}",
+                        thread_id, job.extranonce2.as_ref().unwrap()
+                    );
+                    nonce_offset = u16::from_le_bytes(
+                        hex::decode(job.extranonce2.as_ref().unwrap())
+                            .unwrap()
+                            .try_into()
+                            .unwrap(),
+                    ) as u64;
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} nonce offset set to XN: {}",
+                        thread_id, nonce_offset
+                    );
+                } else {
+                    info!(target: LOG_TARGET,"🎮 GPU {} received job without extranonce2", thread_id);
+                    nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} nonce offset reset to: {}",
+                        thread_id, nonce_offset
+                    );
+                }
                 continue; // Immediately start mining the new job
             }
 
@@ -443,13 +466,17 @@ impl GpuManager {
 
                                 // Generate 6 bytes locally from nonce
                                 let nonce_6bytes = nonce.to_le_bytes();
+                                info!(target: LOG_TARGET,
+                                    "🎮 GPU {} local nonce bytes: {:?}",
+                                    thread_id, nonce_6bytes
+                                );
                                 let local_6bytes = [
-                                    nonce_6bytes[0],
-                                    nonce_6bytes[1],
-                                    nonce_6bytes[2],
-                                    nonce_6bytes[3],
-                                    nonce_6bytes[4],
                                     nonce_6bytes[5],
+                                    nonce_6bytes[4],
+                                    nonce_6bytes[3],
+                                    nonce_6bytes[2],
+                                    nonce_6bytes[1],
+                                    nonce_6bytes[0],
                                 ];
 
                                 // Combine XN (2 bytes) + local (6 bytes) = 8 bytes total
@@ -471,11 +498,11 @@ impl GpuManager {
                                 nonce_8bytes
                             };
 
-                            let nonce_hex = hex::encode(&nonce_combined);
+                            let nonce_hex = hex::encode(&nonce.to_le_bytes());
 
                             // Calculate the actual hash result for SHA3x using same function as CPU
                             let hash_result = engine
-                                .calculate_share_result(job, nonce_combined)
+                                .calculate_share_result(job, nonce.to_le_bytes())
                                 .unwrap_or_else(|_| hex::encode(&[0u8; 32])); // Fallback to zeros
 
                             info!(target: LOG_TARGET,
