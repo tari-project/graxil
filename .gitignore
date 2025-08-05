@@ -7,3 +7,4 @@
 /benches/target/
 /docs/*.html
 /logs
+/data
