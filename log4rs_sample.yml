@@ -39,7 +39,7 @@ root:
 
 loggers:
   tari:
-    level: debug
+    level: info
     appenders:
       # - stdout
       - graxil

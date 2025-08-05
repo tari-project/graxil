@@ -411,7 +411,11 @@ impl GpuManager {
                         // Submit share if found
                         if let Some(nonce) = found_nonce {
                             // FIXED: LuckyPool XN nonce generation - proper 8-byte format
-                            let nonce_hex = if let Some(ref xn) = job.extranonce2 {
+                            let nonce_combined = if let Some(ref xn) = job.extranonce2 {
+                                info!(target: LOG_TARGET,
+                                    "🎮 GPU {} found share with LuckyPool XN: {}",
+                                    thread_id, xn
+                                );
                                 // LuckyPool format: [2-byte-XN][6-byte-local] = 8 bytes total
                                 let xn_bytes = hex::decode(xn).unwrap_or_else(|_| {
                                     warn!(target: LOG_TARGET,
@@ -460,27 +464,18 @@ impl GpuManager {
                                     local_6bytes[5], // Local nonce
                                 ];
 
-                                let combined_hex = hex::encode(&combined_8bytes);
-
-                                info!(target: LOG_TARGET,
-                                    "🔧 GPU {} LuckyPool nonce: XN={}, local={}...{}, combined={}",
-                                    thread_id,
-                                    xn,
-                                    hex::encode(&local_6bytes[0..2]),
-                                    hex::encode(&local_6bytes[4..6]),
-                                    combined_hex
-                                );
-
-                                combined_hex
+                                combined_8bytes
                             } else {
                                 // Standard format: 8-byte nonce (no XN)
-                                let nonce_8bytes = nonce.to_le_bytes();
-                                hex::encode(&nonce_8bytes)
+                                let nonce_8bytes: [u8; 8] = nonce.to_le_bytes();
+                                nonce_8bytes
                             };
+
+                            let nonce_hex = hex::encode(&nonce_combined);
 
                             // Calculate the actual hash result for SHA3x using same function as CPU
                             let hash_result = engine
-                                .calculate_share_result(job, nonce)
+                                .calculate_share_result(job, nonce_combined)
                                 .unwrap_or_else(|_| hex::encode(&[0u8; 32])); // Fallback to zeros
 
                             info!(target: LOG_TARGET,

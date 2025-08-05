@@ -764,12 +764,34 @@ impl OpenClEngine {
     }
 
     /// Calculate the hash result for a given nonce (for share submission)
-    pub fn calculate_share_result(&self, job: &MiningJob, nonce: u64) -> Result<String> {
+    pub fn calculate_share_result(&self, job: &MiningJob, nonce: [u8; 8]) -> Result<String> {
         // Use the exact same SHA3x algorithm as CPU
         use crate::core::sha3x::sha3x_hash_with_nonce;
 
         // Call the same function that CPU uses
         let hash = sha3x_hash_with_nonce(&job.mining_hash, nonce);
+        let sbr_hash = sha3x_hash_with_nonce(
+            &hex::decode("898ef974fa61a87049846e937fd2935c7cac3fd87cd42f8ebd54429e915da296")
+                .unwrap(),
+            hex::decode(&"ebe1290c036ad1ed")
+                .unwrap()
+                .as_slice()
+                .try_into()
+                .unwrap(),
+        );
+
+        info!(target: LOG_TARGET,
+            "Calculated share hash for nonce {}: {} (SBR: {})",
+            hex::encode(nonce),
+            hex::encode(&hash),
+            hex::encode(&sbr_hash)
+        );
+
+        info!(target: LOG_TARGET,
+            "Calculated share hash: {} (SBR: {})",
+            hex::encode(&hash),
+            hex::encode(&sbr_hash)
+        );
 
         // Return hex-encoded hash (same as CPU)
         Ok(hex::encode(&hash))
