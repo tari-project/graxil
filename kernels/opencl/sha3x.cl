@@ -155,7 +155,6 @@ kernel void sha3(global ulong *header_buffer, ulong nonce_start,
 
   for (uint round = 0; round < num_rounds; round++) {
     // Calculate unique nonce for this thread and round
-    // Preserve lower 16 bits (ebe1) and increment upper bits
     ulong thread_offset = get_global_id(0) + round * get_global_size(0);
     ulong current_nonce =
         (nonce_start & 0xFFFF) | (((nonce_start >> 16) + thread_offset) << 16);
@@ -199,8 +198,6 @@ kernel void sha3(global ulong *header_buffer, ulong nonce_start,
       // Found valid share!
       atomic_min_u64(&output[1], hash_value);
       if (output[0] == 0) {
-        // Return nonce that preserves original "ebe1" prefix with winning
-        // thread offset
         output[0] =
             (nonce_start & 0xFFFF) | (current_nonce & 0xFFFFFFFFFFFF0000UL);
       }

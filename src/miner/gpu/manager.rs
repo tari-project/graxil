@@ -436,71 +436,6 @@ impl GpuManager {
 
                         // Submit share if found
                         if let Some(nonce) = found_nonce {
-                            // FIXED: LuckyPool XN nonce generation - proper 8-byte format
-                            let nonce_combined = if let Some(ref xn) = job.extranonce2 {
-                                info!(target: LOG_TARGET,
-                                    "🎮 GPU {} found share with LuckyPool XN: {}",
-                                    thread_id, xn
-                                );
-                                // LuckyPool format: [2-byte-XN][6-byte-local] = 8 bytes total
-                                let xn_bytes = hex::decode(xn).unwrap_or_else(|_| {
-                                    warn!(target: LOG_TARGET,
-                                        "🎮 GPU {} failed to decode XN '{}', using fallback",
-                                        thread_id, xn
-                                    );
-                                    vec![0, 0] // 2-byte fallback
-                                });
-
-                                if xn_bytes.len() != 2 {
-                                    warn!(target: LOG_TARGET,
-                                        "🎮 GPU {} XN '{}' is not 2 bytes, using fallback",
-                                        thread_id, xn
-                                    );
-                                }
-
-                                // Take first 2 bytes of XN, pad if needed
-                                let xn_2bytes = if xn_bytes.len() >= 2 {
-                                    [xn_bytes[0], xn_bytes[1]]
-                                } else if xn_bytes.len() == 1 {
-                                    [xn_bytes[0], 0]
-                                } else {
-                                    [0, 0]
-                                };
-
-                                // Generate 6 bytes locally from nonce
-                                let nonce_6bytes = nonce.to_le_bytes();
-                                info!(target: LOG_TARGET,
-                                    "🎮 GPU {} local nonce bytes: {:?}",
-                                    thread_id, nonce_6bytes
-                                );
-                                let local_6bytes = [
-                                    nonce_6bytes[5],
-                                    nonce_6bytes[4],
-                                    nonce_6bytes[3],
-                                    nonce_6bytes[2],
-                                    nonce_6bytes[1],
-                                    nonce_6bytes[0],
-                                ];
-
-                                // Combine XN (2 bytes) + local (6 bytes) = 8 bytes total
-                                let combined_8bytes = [
-                                    xn_2bytes[0],
-                                    xn_2bytes[1], // XN from pool
-                                    local_6bytes[0],
-                                    local_6bytes[1], // Local nonce
-                                    local_6bytes[2],
-                                    local_6bytes[3], // Local nonce
-                                    local_6bytes[4],
-                                    local_6bytes[5], // Local nonce
-                                ];
-
-                                combined_8bytes
-                            } else {
-                                // Standard format: 8-byte nonce (no XN)
-                                let nonce_8bytes: [u8; 8] = nonce.to_le_bytes();
-                                nonce_8bytes
-                            };
-
                             let nonce_hex = hex::encode(&nonce.to_le_bytes());
 
                             // Calculate the actual hash result for SHA3x using same function as CPU
@@ -549,15 +484,10 @@ impl GpuManager {
                         }
 
                         // Advance nonce for next iteration - CONTINUOUS MINING!
-                        // Preserve "ebe1" in lower 16 bits while incrementing upper bits
-                        let ebe1_prefix = nonce_offset & 0xFFFF; // Extract ebe1 (lower 16 bits)
+                        // Preserve "pool nonce" in lower 16 bits while incrementing upper bits
+                        let pool_prefix = nonce_offset & 0xFFFF; // Extract pool (lower 16 bits)
                         let upper_bits = (nonce_offset >> 16) + hashes_processed as u64; // Increment upper bits
-                        nonce_offset = ebe1_prefix | (upper_bits << 16); // Combine: preserve ebe1 + incremented upper
-
-                        // *** NO SLEEP HERE - MINE AT FULL SPEED! ***
-                        // The old code had: tokio::time::sleep(Duration::from_millis(1)).await;
-                        // This was destroying performance by limiting GPU to ~1000 kernel calls per second
-                        // Now the GPU can mine continuously at full speed!
+                        nonce_offset = pool_prefix | (upper_bits << 16); // Combine: preserve pool prefix + incremented upper bits
                     }
                     Err(e) => {
                         error!(target: LOG_TARGET,"🎮 GPU {} mining error: {}", thread_id, e);
