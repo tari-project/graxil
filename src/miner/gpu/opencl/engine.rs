@@ -508,7 +508,7 @@ impl OpenClEngine {
 
         debug!(target: LOG_TARGET,
             "Starting GPU mining for job: {} with nonce_start={}, batch_size={}",
-            job.job_id, nonce_start, batch_size
+            job.job_id, hex::encode(nonce_start.to_le_bytes()), batch_size
         );
         // Apply intensity delay for power/thermal management
         self.apply_intensity_delay().await;
@@ -584,7 +584,6 @@ impl OpenClEngine {
             // Convert difficulty to target hash value
             // Higher difficulty = lower target value
             u64::MAX / job.target_difficulty
-            // u64::MAX / 100000000399u64
         } else {
             u64::MAX
         };
@@ -619,7 +618,7 @@ impl OpenClEngine {
         debug!(target: LOG_TARGET, "Kernel execution completed for device: {}", self.device.name());
 
         let elapsed_time = timer.elapsed().as_millis();
-        let target_time = 100; // Target execution time in milliseconds
+        let target_time = 1000; // Target execution time in milliseconds
         let adjustment_factor = 0.1; // Proportional adjustment factor
 
         // Read results

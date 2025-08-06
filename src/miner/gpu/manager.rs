@@ -404,6 +404,9 @@ impl GpuManager {
                 match engine.mine(job, nonce_offset, batch_size).await {
                     Ok((found_nonce, hashes_processed, best_difficulty, new_batch_size)) => {
                         batch_size = new_batch_size;
+                        if let Some(found_nonce) = found_nonce {
+                            nonce_offset = found_nonce;
+                        }
                         // Update stats - FIXED to ensure thread_id is valid
                         if thread_id < stats.thread_stats.len() {
                             stats.thread_stats[thread_id].update_hashrate(hashes_processed as u64);
@@ -546,7 +549,10 @@ impl GpuManager {
                         }
 
                         // Advance nonce for next iteration - CONTINUOUS MINING!
-                        nonce_offset += hashes_processed as u64;
+                        // Preserve "ebe1" in lower 16 bits while incrementing upper bits
+                        let ebe1_prefix = nonce_offset & 0xFFFF; // Extract ebe1 (lower 16 bits)
+                        let upper_bits = (nonce_offset >> 16) + hashes_processed as u64; // Increment upper bits
+                        nonce_offset = ebe1_prefix | (upper_bits << 16); // Combine: preserve ebe1 + incremented upper
 
                         // *** NO SLEEP HERE - MINE AT FULL SPEED! ***
                         // The old code had: tokio::time::sleep(Duration::from_millis(1)).await;
@@ -568,7 +574,7 @@ impl GpuManager {
                     Ok(Ok(job)) => {
                         debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
                         current_job = Some(job);
-                        nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                        // nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
                     }
                     Ok(Err(e)) => {
                         error!(target: LOG_TARGET,"🎮 GPU {} job channel error: {}", thread_id, e);
