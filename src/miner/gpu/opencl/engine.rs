@@ -618,7 +618,7 @@ impl OpenClEngine {
         debug!(target: LOG_TARGET, "Kernel execution completed for device: {}", self.device.name());
 
         let elapsed_time = timer.elapsed().as_millis();
-        let target_time = 1000; // Target execution time in milliseconds
+        let target_time = 100; // Target execution time in milliseconds
         let adjustment_factor = 0.1; // Proportional adjustment factor
 
         // Read results
@@ -770,28 +770,6 @@ impl OpenClEngine {
 
         // Call the same function that CPU uses
         let hash = sha3x_hash_with_nonce(&job.mining_hash, nonce);
-        let sbr_hash = sha3x_hash_with_nonce(
-            &hex::decode("898ef974fa61a87049846e937fd2935c7cac3fd87cd42f8ebd54429e915da296")
-                .unwrap(),
-            hex::decode(&"ebe1290c036ad1ed")
-                .unwrap()
-                .as_slice()
-                .try_into()
-                .unwrap(),
-        );
-
-        info!(target: LOG_TARGET,
-            "Calculated share hash for nonce {}: {} (SBR: {})",
-            hex::encode(nonce),
-            hex::encode(&hash),
-            hex::encode(&sbr_hash)
-        );
-
-        info!(target: LOG_TARGET,
-            "Calculated share hash: {} (SBR: {})",
-            hex::encode(&hash),
-            hex::encode(&sbr_hash)
-        );
 
         // Return hex-encoded hash (same as CPU)
         Ok(hex::encode(&hash))
