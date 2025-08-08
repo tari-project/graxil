@@ -62,7 +62,7 @@ impl OpenClEngine {
     /// Create a new OpenCL engine for the specified device
     pub fn new(device: OpenClDevice) -> Self {
         debug!(target: LOG_TARGET,"Creating OpenCL engine for device: {}", device.name());
-        let context = Context::from_device(&device.device()).unwrap();
+        let context = Context::from_device(device.device()).unwrap();
         Self {
             device,
             context,
@@ -84,7 +84,7 @@ impl OpenClEngine {
             settings.intensity,
             settings.batch_size
         );
-        let context = Context::from_device(&device.device()).unwrap();
+        let context = Context::from_device(device.device()).unwrap();
         Self {
             device,
             context,
@@ -416,7 +416,7 @@ impl OpenClEngine {
             match self.mine(job, nonce_start, batch_size).await {
                 Ok((_, hashes_processed, _, new_batch_size)) => {
                     batch_size = new_batch_size; // Update batch size based on mining result
-                    total_hashes += hashes_processed as u64;
+                    total_hashes += hashes_processed;
                     iterations += 1;
                 }
                 Err(e) => {
@@ -526,6 +526,8 @@ impl OpenClEngine {
 
         // Convert header to u64 array for OpenCL kernel (32 bytes = 4 u64s)
         let mut buffer_data = vec![0u64; 4];
+        #[allow(clippy::needless_range_loop)]
+        // Probably a smidge faster than using enumerate as suggested
         for i in 0..4 {
             let start_idx = i * 8;
             if start_idx + 8 <= job.mining_hash.len() {
@@ -565,7 +567,7 @@ impl OpenClEngine {
         }
 
         // Create output buffer [nonce, best_hash]
-        let initial_output = vec![0u64, 0u64];
+        let initial_output = [0u64, 0u64];
         let output_buffer = unsafe {
             Buffer::<cl_ulong>::create(
                 &self.context,
@@ -686,14 +688,14 @@ impl OpenClEngine {
                 "🎮 Using override batch size: {} (was: {})",
                 override_batch, base_batch
             );
-            return override_batch.max(1_000).min(1_000_000); // Safety clamps
+            return override_batch.clamp(1_000, 1_000_000); // Safety clamps
         }
 
         // Apply intensity scaling to batch size
         let intensity_factor = self.gpu_settings.intensity as f32 / 100.0;
         let adjusted_batch = ((base_batch as f32) * intensity_factor) as u32;
 
-        let final_batch = adjusted_batch.max(1_000).min(500_000); // Increased max from 100K to 500K
+        let final_batch = adjusted_batch.clamp(1_000, 500_000); // Increased max from 100K to 500K
 
         debug!(target: LOG_TARGET,
             "Calculated batch size for {}: base={}, intensity={}%, final={}",

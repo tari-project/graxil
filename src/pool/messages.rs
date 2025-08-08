@@ -187,7 +187,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00,
         ];
         let difficulty = calculate_difficulty(&hash, Algorithm::Sha3x);
-        assert_eq!(difficulty, 0xFFFFFFFFFFFFFFFFu64 / 1);
+        assert_eq!(difficulty, 0xFFFFFFFFFFFFFFFFu64);
     }
 
     #[test]
@@ -205,7 +205,7 @@ mod tests {
     fn test_sha3x_parse_target() {
         let target_hex = "0100000000000000";
         let difficulty = parse_target_difficulty(target_hex, Algorithm::Sha3x);
-        assert_eq!(difficulty, 0xFFFFFFFFFFFFFFFFu64 / 1);
+        assert_eq!(difficulty, 0xFFFFFFFFFFFFFFFFu64);
     }
 
     #[test]

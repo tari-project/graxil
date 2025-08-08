@@ -18,13 +18,13 @@
 // - Submodules: jobs, runner, profiler
 
 pub mod jobs;
-pub mod runner;
 pub mod profiler;
+pub mod runner;
 
 // Re-export key benchmark types and functions
 pub use jobs::{BenchmarkJob, create_test_jobs};
-pub use runner::{BenchmarkRunner, BenchmarkConfig};
-pub use profiler::{ProfilerData, PerformanceMetrics};
+pub use profiler::{PerformanceMetrics, ProfilerData};
+pub use runner::{BenchmarkConfig, BenchmarkRunner};
 
 // Changelog:
 // - v1.0.0 (2025-06-14): Initial benchmark module creation.

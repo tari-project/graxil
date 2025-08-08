@@ -18,12 +18,12 @@
 // - Submodules: cpu, gpu, stats
 
 pub mod cpu;
-pub mod gpu;  // Added GPU mining module
+pub mod gpu; // Added GPU mining module
 pub mod stats;
 
 // Re-export key types for convenience
 pub use cpu::CpuMiner;
-pub use gpu::GpuManager;  // Added GPU manager export
+pub use gpu::GpuManager; // Added GPU manager export
 pub use stats::{MinerStats, ThreadStats};
 
 // Changelog:

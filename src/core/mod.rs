@@ -13,16 +13,18 @@
 // miner, located in the core subdirectory. It declares submodules and re-exports
 // key types for use throughout the project.
 
-pub mod sha3x;
-pub mod sha256;
 pub mod difficulty;
+pub mod sha256;
+pub mod sha3x;
 pub mod types;
 
 // Re-export the most commonly used items
-pub use sha3x::{sha3x_hash_with_nonce_batch};
-pub use sha256::{sha256d_hash, sha256d_hash_with_nonce_batch};
 pub use difficulty::{calculate_difficulty, parse_target_difficulty};
-pub use types::{Algorithm, Args, PoolJob, MiningJob, Share, ShareResponse, ShareResult, ShareError, Target};
+pub use sha3x::sha3x_hash_with_nonce_batch;
+pub use sha256::{sha256d_hash, sha256d_hash_with_nonce_batch};
+pub use types::{
+    Algorithm, Args, MiningJob, PoolJob, Share, ShareError, ShareResponse, ShareResult, Target,
+};
 
 // Changelog:
 // - v1.0.1 (2025-06-16): Added simple SHA-256 support.

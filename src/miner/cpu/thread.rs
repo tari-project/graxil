@@ -109,12 +109,12 @@ fn mining_thread(
                                 let local_nonce = batch_nonce.to_le_bytes();
 
                                 // Decode XN (2 bytes) from job.extranonce2
-                                let xn = hex::decode(&job.extranonce2.clone().unwrap_or_default())
+                                let xn = hex::decode(job.extranonce2.clone().unwrap_or_default())
                                     .unwrap_or(vec![0, 0]);
 
                                 // Compose full 8-byte nonce: [XN][Local Nonce]
                                 let full_nonce = [
-                                    xn.get(0).copied().unwrap_or(0),
+                                    xn.first().copied().unwrap_or(0),
                                     xn.get(1).copied().unwrap_or(0),
                                     local_nonce[0],
                                     local_nonce[1],

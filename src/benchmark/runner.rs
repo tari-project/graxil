@@ -380,7 +380,7 @@ fn benchmark_thread(
                 debug!(target: LOG_TARGET,
                     "Thread {}: Full header: {}",
                     thread_id,
-                    hex::encode(&header)
+                    hex::encode(header)
                 );
             }
             let (target_value, target_difficulty) = if let Some(nbits) = job.nbits {
@@ -392,7 +392,7 @@ fn benchmark_thread(
                 );
                 if thread_id == 0 {
                     let target_bytes = target.to_big_endian();
-                    debug!(target: LOG_TARGET,"Thread 0: Full target: {}", hex::encode(&target_bytes));
+                    debug!(target: LOG_TARGET,"Thread 0: Full target: {}", hex::encode(target_bytes));
                 }
                 (target, difficulty)
             } else {
@@ -428,9 +428,9 @@ fn benchmark_thread(
                             debug!(target: LOG_TARGET,"Thread 0: Target - Hash difference: {:064x}", diff);
                             if logged_hashes == 0 {
                                 let mut hasher = Sha256::new();
-                                hasher.update(&header);
+                                hasher.update(header);
                                 let first_hash = hasher.finalize();
-                                debug!(target: LOG_TARGET,"Thread 0: First SHA-256: {}", hex::encode(&first_hash));
+                                debug!(target: LOG_TARGET,"Thread 0: First SHA-256: {}", hex::encode(first_hash));
                             }
                             logged_hashes += 1;
                         }

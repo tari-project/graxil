@@ -36,7 +36,7 @@ pub fn sha256d_hash(header: &[u8]) -> [u8; 32] {
     hasher.update(first);
     let result = hasher.finalize().into();
 
-    debug!(target: LOG_TARGET,"SHA256d hash: {}", hex::encode(&result));
+    debug!(target: LOG_TARGET,"SHA256d hash: {}", hex::encode(result));
     result
 }
 
@@ -58,6 +58,8 @@ pub fn sha256d_hash_with_nonce_batch(header_base: &[u8], start_nonce: u32) -> [(
     let mut header = [0u8; 80];
     header.copy_from_slice(header_base);
 
+    #[allow(clippy::needless_range_loop)]
+    // Probably a smidge faster than using enumerate as suggested
     for i in 0..4 {
         let nonce = start_nonce.wrapping_add(i as u32);
         header[76..80].copy_from_slice(&nonce.to_le_bytes());
@@ -67,7 +69,7 @@ pub fn sha256d_hash_with_nonce_batch(header_base: &[u8], start_nonce: u32) -> [(
             "Batch hash {}: nonce={:08x}, hash={}",
             i,
             nonce,
-            hex::encode(&hash)
+            hex::encode(hash)
         );
     }
 

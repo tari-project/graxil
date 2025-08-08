@@ -39,12 +39,6 @@ jobs:
             opencl-headers \
             ocl-icd-opencl-dev
 
-      - name: Install nVida cuda toolkit
-        uses: jimver/cuda-toolkit@v0.2.26
-        with:
-          method: network
-          sub-packages: '["nvcc", "cudart"]'
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -61,7 +55,7 @@ jobs:
       - name: cargo machete
         if: ${{ !cancelled() }}
         run: |
-          cargo install --version 0.7.0 cargo-machete
+          cargo install --version 0.8.0 cargo-machete
           cargo machete
 
       - name: cargo vet
@@ -69,24 +63,6 @@ jobs:
         run: |
           cargo install cargo-vet@0.10.0 --locked
           cargo vet
-
-  file-licenses:
-    name: file-licenses
-    if: ${{ false }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-
-      - name: install ripgrep
-        run: |
-          # https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb.sha256
-          wget -v https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
-          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
-          rg --version || exit 1
-
-      - name: run the license check
-        run: ./scripts/file_license_check.sh
 
   ci-matrix:
     name: ci ${{ matrix.platform }} - ${{ matrix.features }}
@@ -96,11 +72,8 @@ jobs:
       matrix:
         include:
           - platform: 'ubuntu-22.04'
-            features: 'nvidia,opencl'
           - platform: 'macos-latest'
-            features: 'metal,opencl'
           - platform: 'windows-latest'
-            features: 'nvidia,opencl'
 
     runs-on: ${{ matrix.platform }}
 
@@ -113,21 +86,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends --assume-yes \
             libprotobuf-dev \
-            protobuf-compiler
-
-      - name: install dependencies (linux/OpenCL)
-        if: startsWith(runner.os,'Linux')
-        run: |
-          sudo apt-get install --no-install-recommends --assume-yes \
+            protobuf-compiler \
             opencl-headers \
             ocl-icd-opencl-dev
-
-      - name: install nVida cuda toolkit
-        if: contains(matrix.features, 'nvidia')
-        uses: jimver/cuda-toolkit@v0.2.26
-        with:
-          method: network
-          sub-packages: '["nvcc", "cudart"]'
 
       - name: install dependencies (macOS)
         if: startsWith(runner.os,'macOS')
@@ -169,7 +130,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           cargo install cargo-lints
-          cargo lints clippy --features ${{ matrix.features }}
+          cargo lints clippy --features gpu --no-deps
 
       - name: cargo check
         if: ${{ !cancelled() }}

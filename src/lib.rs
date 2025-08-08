@@ -17,19 +17,19 @@
 // - src/lib.rs (root library file)
 // - Exports modules: core, miner, pool, utils, benchmark, help, tui (optional)
 
+pub mod benchmark;
 pub mod core;
+pub mod help;
 pub mod miner;
 pub mod pool;
 pub mod utils;
-pub mod benchmark;
-pub mod help;
 
 // Re-export commonly used types at the crate root for convenience
+pub use crate::benchmark::runner::BenchmarkRunner;
 pub use crate::core::{difficulty, sha3x};
+pub use crate::help::{display_full_help, display_quick_help, display_version_info};
 pub use crate::miner::{CpuMiner, MinerStats};
 pub use crate::pool::PoolClient;
-pub use crate::benchmark::runner::BenchmarkRunner;
-pub use crate::help::{display_full_help, display_quick_help, display_version_info};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 

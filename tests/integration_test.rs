@@ -20,10 +20,10 @@
 
 #[cfg(test)]
 mod tests {
-    use graxil::core::sha3x::sha3x_hash_with_nonce;
     use graxil::core::difficulty::{calculate_difficulty, parse_target_difficulty};
+    use graxil::core::sha3x::sha3x_hash_with_nonce;
     use graxil::core::types::{MiningJob, PoolJob, Share};
-    use graxil::pool::messages::{parse_pool_message, PoolMessage};
+    use graxil::pool::messages::{PoolMessage, parse_pool_message};
     use hex;
 
     #[tokio::test]
@@ -58,24 +58,27 @@ mod tests {
         let mining_job = MiningJob {
             job_id: pool_job.job_id.clone(),
             mining_hash: header_template,
-            target_difficulty: pool_job.difficulty.unwrap_or_else(|| parse_target_difficulty(&pool_job.target)),
+            target_difficulty: pool_job
+                .difficulty
+                .unwrap_or_else(|| parse_target_difficulty(&pool_job.target)),
             height: pool_job.height,
         };
         assert_eq!(mining_job.job_id, "test_job", "Job ID should match");
-        assert_eq!(mining_job.mining_hash.len(), 32, "Mining hash length should be 32 bytes");
-        assert_eq!(mining_job.target_difficulty, 1000, "Target difficulty should match");
+        assert_eq!(
+            mining_job.mining_hash.len(),
+            32,
+            "Mining hash length should be 32 bytes"
+        );
+        assert_eq!(
+            mining_job.target_difficulty, 1000,
+            "Target difficulty should match"
+        );
         assert_eq!(mining_job.height, 123456, "Height should match");
     }
 
     #[tokio::test]
     async fn test_share_creation() {
-        let share = Share::new(
-            "test_job".to_string(),
-            12345u64,
-            vec![0u8; 32],
-            1000u64,
-            0,
-        );
+        let share = Share::new("test_job".to_string(), 12345u64, vec![0u8; 32], 1000u64, 0);
         assert_eq!(share.job_id, "test_job", "Share job ID should match");
         assert_eq!(share.nonce, 12345, "Share nonce should match");
         assert_eq!(share.hash.len(), 32, "Share hash length should be 32 bytes");
@@ -88,15 +91,26 @@ mod tests {
     async fn test_pool_message_parsing_login_success() {
         let message = r#"{"id":1,"jsonrpc":"2.0","result":{"status":"OK"}}"#;
         let result = parse_pool_message(message).unwrap();
-        assert!(matches!(result, Some(PoolMessage::LoginSuccess)), "Should parse login success");
+        assert!(
+            matches!(result, Some(PoolMessage::LoginSuccess)),
+            "Should parse login success"
+        );
     }
 
     #[tokio::test]
     async fn test_pool_message_parsing_share_response() {
         let message = r#"{"id":100,"jsonrpc":"2.0","result":{"status":"accepted"}}"#;
         let result = parse_pool_message(message).unwrap();
-        assert!(matches!(result, Some(PoolMessage::ShareResponse { thread_id: 0, accepted: true })), 
-            "Should parse share accepted response");
+        assert!(
+            matches!(
+                result,
+                Some(PoolMessage::ShareResponse {
+                    thread_id: 0,
+                    accepted: true
+                })
+            ),
+            "Should parse share accepted response"
+        );
     }
 }
 

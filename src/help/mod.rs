@@ -17,29 +17,29 @@
 // - src/help/mod.rs (help module entry point)
 // - Submodules: commands, benchmarks, mining
 
-pub mod commands;
 pub mod benchmarks;
+pub mod commands;
 pub mod mining;
 
 // Re-export key help functions
-pub use commands::{print_extended_help, get_command_examples};
-pub use benchmarks::{print_benchmark_help, get_benchmark_examples};
-pub use mining::{print_mining_help, get_mining_examples};
+pub use benchmarks::{get_benchmark_examples, print_benchmark_help};
+pub use commands::{get_command_examples, print_extended_help};
+pub use mining::{get_mining_examples, print_mining_help};
 
 /// Display comprehensive help information
 pub fn display_full_help() {
     println!("🚀 SHA3x Miner - High-Performance Tari Mining Software");
     println!("========================================================");
     println!();
-    
+
     commands::print_extended_help();
     println!();
-    
+
     benchmarks::print_benchmark_help();
     println!();
-    
+
     mining::print_mining_help();
-    
+
     println!();
     println!("📚 For detailed documentation, see:");
     println!("   • docs/USAGE.md - Complete usage guide");
@@ -70,10 +70,23 @@ pub fn display_version_info() {
     println!("High-Performance Tari (SHA3x) CPU Miner");
     println!();
     println!("Build Information:");
-    println!("  • Rust version: {}", option_env!("RUSTC_VERSION").unwrap_or("unknown"));
+    println!(
+        "  • Rust version: {}",
+        option_env!("RUSTC_VERSION").unwrap_or("unknown")
+    );
     println!("  • Target: {}", std::env::consts::ARCH);
-    println!("  • Profile: {}", if cfg!(debug_assertions) { "debug" } else { "release" });
-    println!("  • Features: CPU mining, Benchmarking{}", if cfg!(feature = "tui") { ", TUI" } else { "" });
+    println!(
+        "  • Profile: {}",
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        }
+    );
+    println!(
+        "  • Features: CPU mining, Benchmarking{}",
+        if cfg!(feature = "tui") { ", TUI" } else { "" }
+    );
     println!();
     println!("License: MIT License");
     println!("Repository: https://github.com/oieieio/sha3x-miner");

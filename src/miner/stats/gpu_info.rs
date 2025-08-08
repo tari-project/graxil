@@ -74,6 +74,7 @@ impl GpuVendor {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(string_name: &str) -> Self {
         let sanitized_name = string_name.to_lowercase();
         let sanitized_name = sanitized_name.trim().to_string();
@@ -246,6 +247,7 @@ impl GpuInfo {
 
     /// Parse a single line of nvidia-smi CSV output
     /// Expected format: "NVIDIA GeForce RTX 4090, 535.104.05, 65, 350.2, 8192, 24576, 85"
+    #[allow(clippy::type_complexity)]
     fn parse_nvidia_smi_line(
         line: &str,
     ) -> Result<

@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match engine.mine(&test_job, nonce_offset, batch_size).await {
             Ok((found_nonce, hashes_processed, best_difficulty, new_batch_size)) => {
                 batch_size = new_batch_size; // Update batch size based on mining result
-                total_hashes += hashes_processed as u64;
+                total_hashes += hashes_processed;
 
                 if let Some(nonce) = found_nonce {
                     info!(target: LOG_TARGET,
@@ -86,7 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
 
-                nonce_offset += hashes_processed as u64;
+                nonce_offset += hashes_processed;
 
                 // Progress update every 50 iterations
                 if iteration % 50 == 0 {

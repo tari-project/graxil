@@ -19,12 +19,12 @@
 
 use crate::Result;
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::net::{TcpStream, lookup_host};
 
 /// Connection information for tracking pool connectivity and performance
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ConnectionInfo {
     pub pool_address: Option<String>,
     pub resolved_address: Option<SocketAddr>,
@@ -33,20 +33,6 @@ pub struct ConnectionInfo {
     pub is_connected: bool,
     pub connection_attempts: u32,
     pub last_successful_connect: Option<Instant>,
-}
-
-impl Default for ConnectionInfo {
-    fn default() -> Self {
-        Self {
-            pool_address: None,
-            resolved_address: None,
-            connection_latency: None,
-            connected_at: None,
-            is_connected: false,
-            connection_attempts: 0,
-            last_successful_connect: None,
-        }
-    }
 }
 
 impl ConnectionInfo {
@@ -62,7 +48,9 @@ impl ConnectionInfo {
 
     /// Get formatted pool address for display
     pub fn display_address(&self) -> String {
-        self.pool_address.clone().unwrap_or_else(|| "Not connected".to_string())
+        self.pool_address
+            .clone()
+            .unwrap_or_else(|| "Not connected".to_string())
     }
 }
 
@@ -70,6 +58,12 @@ impl ConnectionInfo {
 #[derive(Clone)]
 pub struct PoolClient {
     connection_info: Arc<Mutex<ConnectionInfo>>,
+}
+
+impl Default for PoolClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PoolClient {
@@ -86,10 +80,11 @@ impl PoolClient {
         if let Ok(addr) = pool_str.parse::<SocketAddr>() {
             return Ok(addr);
         }
-        
+
         // If that fails, try DNS resolution
         let mut addrs = lookup_host(pool_str).await?;
-        addrs.next()
+        addrs
+            .next()
             .ok_or_else(|| "No addresses found for hostname".into())
     }
 
@@ -102,7 +97,7 @@ impl PoolClient {
     /// Connect to the mining pool at the specified address (supports both IP and domain)
     pub async fn connect_str(&self, pool_address: &str) -> Result<TcpStream> {
         let start_time = Instant::now();
-        
+
         // Update connection attempt counter
         {
             let mut info = self.connection_info.lock().unwrap();
@@ -114,7 +109,7 @@ impl PoolClient {
         let resolved_addr = Self::resolve_pool_address(pool_address).await?;
         let stream = TcpStream::connect(resolved_addr).await?;
         let connection_latency = start_time.elapsed();
-        
+
         // Update connection info on successful connection
         {
             let mut info = self.connection_info.lock().unwrap();
@@ -124,15 +119,19 @@ impl PoolClient {
             info.is_connected = true;
             info.last_successful_connect = Some(Instant::now());
         }
-        
+
         stream.set_nodelay(true)?; // Disable Nagle's algorithm for low latency
         Ok(stream)
     }
 
     /// Internal method for connecting with tracking (used by backward compatible method)
-    async fn connect_with_tracking(&self, pool_str: &str, pool_address: SocketAddr) -> Result<TcpStream> {
+    async fn connect_with_tracking(
+        &self,
+        pool_str: &str,
+        pool_address: SocketAddr,
+    ) -> Result<TcpStream> {
         let start_time = Instant::now();
-        
+
         // Update connection attempt counter
         {
             let mut info = self.connection_info.lock().unwrap();
@@ -142,7 +141,7 @@ impl PoolClient {
 
         let stream = TcpStream::connect(pool_address).await?;
         let connection_latency = start_time.elapsed();
-        
+
         // Update connection info on successful connection
         {
             let mut info = self.connection_info.lock().unwrap();
@@ -152,7 +151,7 @@ impl PoolClient {
             info.is_connected = true;
             info.last_successful_connect = Some(Instant::now());
         }
-        
+
         stream.set_nodelay(true)?;
         Ok(stream)
     }

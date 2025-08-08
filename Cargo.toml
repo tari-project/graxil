@@ -1,25 +1,10 @@
-# SHA3x Miner - Free and Open Source Software Statement
-#
-# This project, sha3x-miner, is Free and Open Source Software (FOSS) licensed
-# under the MIT License. You are free to use, modify, and distribute this
-# software in accordance with the license terms. Contributions are welcome
-# via pull requests to the project repository.
-#
-# File: Cargo.toml
-# Version: 1.2.0-hybrid
-# Developer: OIEIEIO <oieieio@protonmail.com>
-#
-# This file is the configuration for the SHA3x miner project, located at the
-# root of the project tree. It defines metadata, dependencies, features, and
-# binary targets for building the miner, supporting SHA3X (Tari) mining with CPU, GPU, and hybrid modes.
-
 [package]
 name = "graxil"
 version = "1.0.10"
 edition = "2024"
 description = "High-performance SHA3x (Tari) CPU/GPU miner with hybrid mode"
 license = "MIT"
-# repository = "https://github.com/your-repo/sha3x-miner"  # Uncomment and set your repo
+repository = "https://github.com/tari-project/graxil"
 rust-version = "1.85" # Meets 2024 edition requirement
 
 [dependencies]
@@ -38,14 +23,10 @@ rand = "0.8.5"
 crossbeam = "0.8.4"
 uint = "0.10.0"
 axum = { version = "0.7", features = ["ws"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["fs", "cors"] }
-tokio-tungstenite = "0.21"
 sysinfo = "0.35.2"
 
 # Tari packages
 tari_common = { git = "https://github.com/tari-project/tari.git", tag = "v4.8.0" }
-tari_common_types = { git = "https://github.com/tari-project/tari.git", tag = "v4.8.0" }
 
 # GPU Mining dependencies (OpenCL)
 opencl3 = { version = "0.9.5", optional = true }
@@ -55,14 +36,9 @@ anyhow = "1.0.89"
 roles_logic_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
 codec_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
 binary_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-framing_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-noise_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
 
 # Utilities
 thiserror = "1.0"
-
-# Async channels
-async-channel = "1.8"
 
 # TUI dependencies (optional)
 ratatui = { version = "0.29.0", optional = true }
@@ -75,9 +51,13 @@ cpu = []                           # CPU-only mining
 gpu = ["opencl3"]                  # GPU-only mining (385+ MH/s)  
 hybrid = ["cpu", "gpu", "opencl3"] # CPU+GPU hybrid mining (400+ MH/s)
 
+[dev-dependencies]
+tempfile = "3.8"
+
 [[bin]]
 name = "graxil"
 path = "src/main.rs"
+
 [[bin]]
 name = "gpu_test"
 path = "src/bin/gpu_test.rs"
@@ -92,16 +72,7 @@ name = "device_detection"
 path = "examples/device_detection.rs"
 required-features = ["gpu"]
 
-[dev-dependencies]
-tempfile = "3.8"
-
-# Changelog:
-# - v1.2.0-hybrid (2025-06-25): Added proper hybrid mode support.
-#   - Updated hybrid feature to include both "cpu" and "gpu" features.
-#   - Fixed feature dependencies for proper compilation of hybrid mode.
-#   - Hybrid mode now enables both CPU and GPU mining simultaneously.
-# - v1.1.0 (2025-06-24): Added GPU mining support.
-#   - Added opencl3 = "0.10.5" dependency for OpenCL GPU mining support.
-#   - Added anyhow = "1.0.89" for improved error handling in GPU code.
-#   - Added "gpu" feature flag to enable/disable GPU mining at compile time.
-#   - GPU mining dependencies are optional to maintain CPU-only build capability.
+[package.metadata.cargo-machete]
+ignored = [
+    "log4rs"
+]

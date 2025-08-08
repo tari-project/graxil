@@ -17,14 +17,14 @@
 // - src/miner/stats/mod.rs (stats module entry point)
 // - Submodules: miner_stats, thread_stats
 
+pub mod gpu_info;
 pub mod miner_stats;
 pub mod thread_stats;
-pub mod gpu_info;
 
 // Re-export key types for convenience
+pub use gpu_info::GpuInfo;
 pub use miner_stats::MinerStats;
 pub use thread_stats::ThreadStats;
-pub use gpu_info::GpuInfo;
 
 // Changelog:
 // - v1.0.0 (2025-06-14): Extracted from monolithic main.rs.
