@@ -21,9 +21,6 @@ pub enum GpuInformationFileError {
     #[error("Directory {path:?} is read-only")]
     ReadOnlyDirectory { path: PathBuf },
 
-    #[error("Cannot save empty GPU information file")]
-    EmptyDeviceList,
-
     #[error("GPU information file does not exist at {path:?}")]
     FileNotFound { path: PathBuf },
 
@@ -237,10 +234,6 @@ impl GpuInformationFileManager {
         information_file_content: &GpuInformationFile,
     ) -> Result<(), GpuInformationFileError> {
         debug!(target: LOG_TARGET, "Saving GPU information file to {:?}", self.file_path);
-        if information_file_content.devices.is_empty() {
-            return Err(GpuInformationFileError::EmptyDeviceList);
-        }
-
         self._write_file(information_file_content).await
     }
 
