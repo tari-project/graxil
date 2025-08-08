@@ -138,26 +138,13 @@ jobs:
           key: ${{ matrix.builds.name }}
           cache-on-failure: true
 
-      - name: Install nVida cuda toolkit
-        uses: jimver/cuda-toolkit@v0.2.26
-        if: contains(matrix.builds.features, 'nvidia')
-        with:
-          method: network
-          sub-packages: '["nvcc", "cudart"]'
-
       - name: Install Linux dependencies - Ubuntu
         if: ${{ startsWith(runner.os,'Linux') }}
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends --assume-yes \
             libprotobuf-dev \
-            protobuf-compiler
-
-      - name: Install Linux dependencies - Ubuntu / OpenCL
-        if: ${{ startsWith(runner.os,'Linux') }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --assume-yes \
+            protobuf-compiler \
             opencl-headers \
             ocl-icd-opencl-dev
 
