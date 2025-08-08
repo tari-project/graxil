@@ -55,7 +55,7 @@ jobs:
       - name: cargo machete
         if: ${{ !cancelled() }}
         run: |
-          cargo install --version 0.7.0 cargo-machete
+          cargo install --version 0.8.0 cargo-machete
           cargo machete
 
       - name: cargo vet
@@ -130,7 +130,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           cargo install cargo-lints
-          cargo lints clippy --features gpu
+          cargo lints clippy --features gpu --no-deps
 
       - name: cargo check
         if: ${{ !cancelled() }}

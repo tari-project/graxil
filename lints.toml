@@ -1,0 +1,4 @@
+allow = [
+    'clippy::manual_div_ceil',
+    'clippy::too_many_arguments',
+]
