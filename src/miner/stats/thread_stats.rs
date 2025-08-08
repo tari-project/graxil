@@ -17,8 +17,8 @@
 // - src/miner/stats/thread_stats.rs (per-thread statistics logic)
 // - Depends on: std
 
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 pub struct ThreadStats {
@@ -75,15 +75,16 @@ impl ThreadStats {
         if elapsed > 0.0 {
             let total_hashes = self.hashes_computed.load(Ordering::Relaxed);
             let current_rate = total_hashes as f64 / elapsed;
-            
+
             // Update current hashrate
             *self.current_hashrate.lock().unwrap() = current_rate;
-            
+
             // Update peak hashrate if this is higher
             let current_rate_u64 = current_rate as u64;
             let current_peak = self.peak_hashrate.load(Ordering::Relaxed);
             if current_rate_u64 > current_peak {
-                self.peak_hashrate.store(current_rate_u64, Ordering::Relaxed);
+                self.peak_hashrate
+                    .store(current_rate_u64, Ordering::Relaxed);
             }
         }
     }

@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use log::info;
 use graxil::miner::gpu::opencl::device::{GpuDeviceType, OpenClDevice};
+use log::info;
 
 const LOG_TARGET: &str = "tari::graxil::gpu_device_example";
 

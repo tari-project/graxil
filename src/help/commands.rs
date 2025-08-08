@@ -22,25 +22,25 @@ pub fn print_extended_help() {
     println!("COMMAND LINE OPTIONS:");
     println!("=====================");
     println!();
-    
+
     println!("REQUIRED FOR MINING:");
     println!("  -u, --wallet <ADDRESS>     Tari wallet address for mining rewards");
     println!("  -o, --pool <HOST:PORT>     Mining pool address (e.g., pool.tari.com:4200)");
     println!();
-    
+
     println!("OPTIONAL:");
     println!("  -p, --password <PASS>      Pool password [default: x]");
     println!("  --worker <n>            Worker identifier [default: worker1]");
     println!("  -t, --threads <NUM>        Number of CPU threads (0 = auto-detect) [default: 0]");
     println!("  -g, --gpu                  Enable GPU mining (future feature) [default: false]");
     println!();
-    
+
     println!("BENCHMARKING:");
     println!("  --benchmark                Run performance benchmark (no pool required)");
     println!("  --benchmark-duration <SEC> Benchmark duration in seconds [default: 30]");
     println!("  --benchmark-difficulty <N> Target difficulty for share finding [default: 1000000]");
     println!();
-    
+
     println!("DISPLAY:");
     println!("  -h, --help                 Show this help message");
     println!("  -V, --version              Show version information");
@@ -54,27 +54,27 @@ pub fn get_command_examples() -> Vec<(&'static str, &'static str)> {
     vec![
         (
             "Basic Mining",
-            "sha3x-miner -u 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW -o tari-pool.com:4200 --threads 6"
+            "sha3x-miner -u 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW -o tari-pool.com:4200 --threads 6",
         ),
         (
             "Mining with Custom Password",
-            "sha3x-miner -u 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW -o pool.tari.com:4200 -p worker-01 --threads 8"
+            "sha3x-miner -u 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW -o pool.tari.com:4200 -p worker-01 --threads 8",
         ),
         (
             "Mining with Specific Thread Count",
-            "sha3x-miner -u 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW -o pool.tari.com:4200 --threads 64"
+            "sha3x-miner -u 125ohcEDcG8sL4DcdtqZ6YLbSgVYFJWtGeCfHmRocTcyGNYRqMYidnfs1JQPijqQvqV5SLygC5ynxZH3zED5Rr9fPAW -o pool.tari.com:4200 --threads 64",
         ),
         (
             "Performance Benchmark (30 seconds)",
-            "sha3x-miner --benchmark --threads 72 --benchmark-duration 30"
+            "sha3x-miner --benchmark --threads 72 --benchmark-duration 30",
         ),
         (
             "Extended Benchmark (5 minutes)",
-            "sha3x-miner --benchmark --benchmark-duration 300 --benchmark-difficulty 100000"
+            "sha3x-miner --benchmark --benchmark-duration 300 --benchmark-difficulty 100000",
         ),
         (
             "Quick Hardware Test",
-            "sha3x-miner --benchmark --benchmark-duration 10 --benchmark-difficulty 1000"
+            "sha3x-miner --benchmark --benchmark-duration 10 --benchmark-difficulty 1000",
         ),
     ]
 }
@@ -84,7 +84,7 @@ pub fn print_command_examples() {
     println!("USAGE EXAMPLES:");
     println!("===============");
     println!();
-    
+
     for (description, command) in get_command_examples() {
         println!("{}:", description);
         println!("  {}", command);
@@ -173,7 +173,9 @@ pub fn print_quick_help() {
     println!("  sha3x-miner -u WALLET -o POOL:PORT --threads 6");
     println!();
     println!("BENCHMARKING:");
-    println!("  sha3x-miner --benchmark --threads 72 --benchmark-duration 60 --benchmark-difficulty 100000");
+    println!(
+        "  sha3x-miner --benchmark --threads 72 --benchmark-duration 60 --benchmark-difficulty 100000"
+    );
 }
 
 // Changelog:

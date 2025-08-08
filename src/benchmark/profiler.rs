@@ -17,32 +17,32 @@
 // - src/benchmark/profiler.rs (performance monitoring utilities)
 // - Depends on: std, sysinfo (optional)
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 /// Performance metrics collected during benchmarking
 #[derive(Debug, Clone)]
 pub struct PerformanceMetrics {
     /// Total memory allocations tracked
     pub allocations: u64,
-    
+
     /// Peak memory usage in bytes
     pub peak_memory_usage: u64,
-    
+
     /// Average memory usage in bytes
     pub avg_memory_usage: u64,
-    
+
     /// CPU usage percentage (if available)
     pub cpu_usage: f64,
-    
+
     /// Cache miss rate (if trackable)
     pub cache_miss_rate: f64,
-    
+
     /// Context switches per second
     pub context_switches_per_sec: f64,
-    
+
     /// System load average
     pub load_average: f64,
 }
@@ -51,16 +51,16 @@ pub struct PerformanceMetrics {
 pub struct ProfilerData {
     /// Allocation counter
     allocation_count: AtomicU64,
-    
+
     /// Memory usage samples
     memory_samples: Arc<std::sync::Mutex<VecDeque<u64>>>,
-    
+
     /// Start time for profiling session
     start_time: Instant,
-    
+
     /// Peak memory usage observed
     peak_memory: AtomicU64,
-    
+
     /// Maximum samples to keep in memory
     max_samples: usize,
 }
@@ -102,7 +102,7 @@ impl ProfilerData {
         // Add sample to history
         if let Ok(mut samples) = self.memory_samples.lock() {
             samples.push_back(current_usage);
-            
+
             // Keep only recent samples
             while samples.len() > self.max_samples {
                 samples.pop_front();
@@ -126,7 +126,7 @@ impl ProfilerData {
             if samples.is_empty() {
                 return 0;
             }
-            
+
             let sum: u64 = samples.iter().sum();
             sum / samples.len() as u64
         } else {
@@ -146,7 +146,7 @@ impl ProfilerData {
             peak_memory_usage: self.get_peak_memory(),
             avg_memory_usage: self.get_average_memory(),
             cpu_usage: self.get_cpu_usage(),
-            cache_miss_rate: 0.0, // Would need hardware counters
+            cache_miss_rate: 0.0,          // Would need hardware counters
             context_switches_per_sec: 0.0, // Would need system monitoring
             load_average: self.get_load_average(),
         }
@@ -218,16 +218,16 @@ impl ResourceMonitor {
     /// Start monitoring system resources
     pub fn start_monitoring(&self) {
         self.monitoring.store(true, Ordering::Relaxed);
-        
+
         let profiler = Arc::clone(&self.profiler);
         let monitoring = Arc::clone(&self.monitoring);
-        
+
         std::thread::spawn(move || {
             while monitoring.load(Ordering::Relaxed) {
                 // Get current memory usage
                 let memory_usage = Self::get_memory_usage();
                 profiler.update_memory_usage(memory_usage);
-                
+
                 // Sleep for sampling interval
                 std::thread::sleep(Duration::from_millis(100));
             }
@@ -253,7 +253,10 @@ pub struct PerformanceAnalyzer;
 
 impl PerformanceAnalyzer {
     /// Compare two performance metrics
-    pub fn compare_metrics(baseline: &PerformanceMetrics, current: &PerformanceMetrics) -> MetricsComparison {
+    pub fn compare_metrics(
+        baseline: &PerformanceMetrics,
+        current: &PerformanceMetrics,
+    ) -> MetricsComparison {
         MetricsComparison {
             allocation_change: Self::calculate_percentage_change(
                 baseline.allocations as f64,
@@ -284,9 +287,11 @@ impl PerformanceAnalyzer {
             } else {
                 0.0
             },
-            memory_pressure: if metrics.peak_memory_usage > 1_000_000_000 { // 1GB
+            memory_pressure: if metrics.peak_memory_usage > 1_000_000_000 {
+                // 1GB
                 "High".to_string()
-            } else if metrics.peak_memory_usage > 100_000_000 { // 100MB
+            } else if metrics.peak_memory_usage > 100_000_000 {
+                // 100MB
                 "Medium".to_string()
             } else {
                 "Low".to_string()
@@ -300,10 +305,10 @@ impl PerformanceAnalyzer {
 pub struct MetricsComparison {
     /// Percentage change in allocations
     pub allocation_change: f64,
-    
+
     /// Percentage change in memory usage
     pub memory_change: f64,
-    
+
     /// Change in CPU usage
     pub cpu_change: f64,
 }
@@ -313,10 +318,10 @@ pub struct MetricsComparison {
 pub struct AllocationAnalysis {
     /// Total number of allocations
     pub total_allocations: u64,
-    
+
     /// Allocations per byte of peak memory
     pub allocation_efficiency: f64,
-    
+
     /// Memory pressure level
     pub memory_pressure: String,
 }

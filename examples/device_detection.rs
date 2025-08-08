@@ -1,8 +1,8 @@
 // Example showing GPU device detection and information file generation
 // This demonstrates the --detect functionality from src/main.rs
 
-use log::{error, info};
 use graxil::miner::gpu::GpuManager;
+use log::{error, info};
 use std::env;
 const LOG_TARGET: &str = "tari::graxil::device_detection_example";
 
