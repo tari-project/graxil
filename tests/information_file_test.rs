@@ -204,11 +204,16 @@ mod tests {
 
         let save_result = manager.save(&empty_gpu_information).await;
 
-        assert!(save_result.is_err());
-        assert!(matches!(
-            save_result.unwrap_err(),
-            GpuInformationFileError::EmptyDeviceList
-        ));
+        assert!(save_result.is_ok());
+        assert!(manager.file_path().exists());
+        let loaded_information = manager
+            .load()
+            .await
+            .expect("Failed to load GPU information file");
+        assert!(
+            loaded_information.devices.is_empty(),
+            "Expected no devices in the loaded information file"
+        );
     }
 
     #[tokio::test]
