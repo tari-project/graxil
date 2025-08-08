@@ -28,8 +28,8 @@ pub fn sha3x_hash_with_nonce(header_template: &[u8], nonce: [u8; 8]) -> Vec<u8> 
     input.push(1u8);
 
     let hash1 = Sha3_256::digest(&input);
-    let hash2 = Sha3_256::digest(&hash1);
-    let hash3 = Sha3_256::digest(&hash2);
+    let hash2 = Sha3_256::digest(hash1);
+    let hash3 = Sha3_256::digest(hash2);
 
     hash3.to_vec()
 }
@@ -42,12 +42,14 @@ pub fn sha3x_hash_with_nonce_batch(header_template: &[u8], nonce: u64) -> [(Vec<
     input.push(1u8);
 
     let mut results: [(Vec<u8>, u64); 4] = array::from_fn(|_| (Vec::new(), 0));
+    #[allow(clippy::needless_range_loop)]
+    // Probably a smidge faster than using enumerate as suggested
     for i in 0..4 {
         let n = nonce + i as u64;
         input[0..8].copy_from_slice(&n.to_le_bytes());
         let hash1 = Sha3_256::digest(&input);
-        let hash2 = Sha3_256::digest(&hash1);
-        let hash3 = Sha3_256::digest(&hash2);
+        let hash2 = Sha3_256::digest(hash1);
+        let hash3 = Sha3_256::digest(hash2);
         results[i] = (hash3.to_vec(), n);
     }
 

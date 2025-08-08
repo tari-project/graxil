@@ -516,9 +516,9 @@ impl Args {
     pub fn get_gpu_settings(&self) -> GpuSettings {
         GpuSettings {
             intensity: self.gpu_intensity.min(100),
-            batch_size: self.gpu_batch_size.map(|b| b.max(1_000).min(1_000_000)),
-            power_limit: self.gpu_power_limit.map(|p| p.max(50).min(110)),
-            temp_limit: self.gpu_temp_limit.map(|t| t.max(60).min(85)),
+            batch_size: self.gpu_batch_size.map(|b| b.clamp(1_000, 1_000_000)),
+            power_limit: self.gpu_power_limit.map(|p| p.clamp(50, 110)),
+            temp_limit: self.gpu_temp_limit.map(|t| t.clamp(60, 85)),
         }
     }
 
@@ -707,19 +707,19 @@ impl Args {
             }
 
             if let Some(batch_size) = self.gpu_batch_size {
-                if batch_size < 1_000 || batch_size > 1_000_000 {
+                if !(1_000..=1_000_000).contains(&batch_size) {
                     return Err("GPU batch size must be between 1,000 and 1,000,000".to_string());
                 }
             }
 
             if let Some(power_limit) = self.gpu_power_limit {
-                if power_limit < 50 || power_limit > 110 {
+                if !(50..=110).contains(&power_limit) {
                     return Err("GPU power limit must be between 50-110%".to_string());
                 }
             }
 
             if let Some(temp_limit) = self.gpu_temp_limit {
-                if temp_limit < 60 || temp_limit > 85 {
+                if !(60..=85).contains(&temp_limit) {
                     return Err("GPU temperature limit must be between 60-85°C".to_string());
                 }
             }

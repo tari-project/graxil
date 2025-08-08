@@ -222,7 +222,7 @@ impl CpuMiner {
 
     // Keep SHA3x functionality unchanged
     async fn connect_to_pool(&self) -> Result<tokio::net::TcpStream> {
-        Ok(self.pool_client.connect_str(&self.pool_address).await?)
+        self.pool_client.connect_str(&self.pool_address).await
     }
 
     async fn login(&self, writer: &mut tokio::net::tcp::OwnedWriteHalf) -> Result<()> {
@@ -285,7 +285,7 @@ impl CpuMiner {
                             self.handle_new_job(job_params, job_tx).await?;
                         }
                     }
-                    id if id >= 100 && id < 200 => {
+                    id if (100..200).contains(&id) => {
                         // CPU shares use IDs 100-199
                         let relative_thread_id = (id - 100) as usize % self.num_threads;
                         let actual_thread_id = self.thread_id_offset + relative_thread_id;
@@ -357,7 +357,7 @@ impl CpuMiner {
         let job: PoolJob = serde_json::from_value(Value::Object(job_data.clone()))?;
 
         // Only handle SHA3x jobs now
-        let header_template = hex::decode(&job.blob.unwrap_or_default())?;
+        let header_template = hex::decode(job.blob.unwrap_or_default())?;
         let target_difficulty = job
             .difficulty
             .unwrap_or_else(|| parse_target_difficulty(&job.target, self.algo));

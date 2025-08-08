@@ -119,7 +119,7 @@ impl GpuInformationFileManager {
         }
 
         let file_name = Self::_resolve_file_name(kernel_type);
-        let file_path = directory_path.join(&file_name);
+        let file_path = directory_path.join(file_name);
 
         Ok(Self {
             directory_path,

@@ -26,7 +26,7 @@ use tokio::sync::mpsc;
 
 use super::manager::GpuManager;
 
-static LuckyPool_XN: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("".to_string()));
+static LUCKY_POOL_XN: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("".to_string()));
 
 const LOG_TARGET: &str = "tari::graxil::gpu_miner";
 
@@ -190,7 +190,7 @@ impl GpuMiner {
 
     /// Connect to pool
     async fn connect_to_pool(&self) -> Result<tokio::net::TcpStream> {
-        Ok(self.pool_client.connect_str(&self.pool_address).await?)
+        self.pool_client.connect_str(&self.pool_address).await
     }
 
     /// Login to pool
@@ -292,8 +292,8 @@ impl GpuMiner {
                             self.handle_new_job(job_params, job_tx).await?;
                         }
                     }
-                    id if id >= 0 => {
-                        let gpu_id = (id - 0) as usize;
+                    _ => {
+                        let gpu_id = id as usize;
                         debug!(target: LOG_TARGET,
                             "GPU share response for ID {} (GPU {}): {:?}",
                             id, gpu_id, result
@@ -304,12 +304,7 @@ impl GpuMiner {
                             // LuckyPool: check error field first
                             if error.is_null() {
                                 // Error is null, check result
-                                if let Some(result_bool) = result.as_bool() {
-                                    result_bool // result == true means accepted
-                                } else {
-                                    // Result exists but not boolean - assume accepted if error is null
-                                    true
-                                }
+                                result.as_bool().unwrap_or(true)
                             } else {
                                 // Error is not null, share was rejected
                                 error!(target: LOG_TARGET,"❌ GPU share rejected by LuckyPool: {:?}", error);
@@ -364,7 +359,6 @@ impl GpuMiner {
                             self.stats.thread_stats[thread_id].record_share(0, accepted);
                         }
                     }
-                    _ => {}
                 }
             }
         } else if let Some(error) = response.get("error") {
@@ -386,7 +380,7 @@ impl GpuMiner {
     ) -> Result<()> {
         let job: PoolJob = serde_json::from_value(Value::Object(job_data.clone()))?;
 
-        let header_template = hex::decode(&job.blob.unwrap_or_default())?;
+        let header_template = hex::decode(job.blob.unwrap_or_default())?;
         let target_difficulty = job
             .difficulty
             .unwrap_or_else(|| parse_target_difficulty(&job.target, self.algo));
@@ -397,7 +391,7 @@ impl GpuMiner {
                 "🔧 LuckyPool XN detected: {} (will be used as first 2 bytes of nonce)",
                 xn
             );
-            *LuckyPool_XN.lock().await = xn.clone(); // Store XN for nonce generation
+            *LUCKY_POOL_XN.lock().await = xn.clone(); // Store XN for nonce generation
             format!(" XN: {}", xn)
         } else {
             String::new()
@@ -409,7 +403,7 @@ impl GpuMiner {
             target_difficulty,
             height: job.height,
             algo: Algorithm::Sha3x,
-            extranonce2: Some(LuckyPool_XN.lock().await.clone()), // ✅ Pass XN from LuckyPool to mining threads
+            extranonce2: Some(LUCKY_POOL_XN.lock().await.clone()), // ✅ Pass XN from LuckyPool to mining threads
             prev_hash: None,
             merkle_root: None,
             version: None,
@@ -465,7 +459,7 @@ impl GpuMiner {
                 .clone()
                 .unwrap_or_else(|| {
                     error!(target: LOG_TARGET,"GPU pool session ID not set, cannot submit shares");
-                    return "".to_string();
+                    "".to_string()
                 });
 
                 info!(target: LOG_TARGET,
@@ -550,7 +544,7 @@ impl GpuMiner {
         {
             let mut writer_guard: tokio::sync::MutexGuard<'_, tokio::net::tcp::OwnedWriteHalf> =
                 writer.lock().await;
-            self.login(&mut *writer_guard).await?;
+            self.login(&mut writer_guard).await?;
         }
         info!(target: LOG_TARGET,"🎮 GPU miner login request sent");
 

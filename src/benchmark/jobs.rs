@@ -149,9 +149,9 @@ pub fn calculate_difficulty_from_nbits(nbits: u32) -> f64 {
     // Calculate target from nBits
     let mut target = U256::from(mantissa);
     if exponent > 3 {
-        target = target << (8 * (exponent - 3) as usize);
+        target <<= 8 * (exponent - 3) as usize;
     } else {
-        target = target >> (8 * (3 - exponent) as usize);
+        target >>= 8 * (3 - exponent) as usize;
     }
 
     if target.is_zero() {

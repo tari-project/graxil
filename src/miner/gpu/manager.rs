@@ -409,7 +409,7 @@ impl GpuManager {
                         }
                         // Update stats - FIXED to ensure thread_id is valid
                         if thread_id < stats.thread_stats.len() {
-                            stats.thread_stats[thread_id].update_hashrate(hashes_processed as u64);
+                            stats.thread_stats[thread_id].update_hashrate(hashes_processed);
 
                             if best_difficulty > 0 {
                                 stats.thread_stats[thread_id]
@@ -429,19 +429,18 @@ impl GpuManager {
                         }
 
                         // Update global hash count
-                        stats.hashes_computed.fetch_add(
-                            hashes_processed as u64,
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
+                        stats
+                            .hashes_computed
+                            .fetch_add(hashes_processed, std::sync::atomic::Ordering::Relaxed);
 
                         // Submit share if found
                         if let Some(nonce) = found_nonce {
-                            let nonce_hex = hex::encode(&nonce.to_le_bytes());
+                            let nonce_hex = hex::encode(nonce.to_le_bytes());
 
                             // Calculate the actual hash result for SHA3x using same function as CPU
                             let hash_result = engine
                                 .calculate_share_result(job, nonce.to_le_bytes())
-                                .unwrap_or_else(|_| hex::encode(&[0u8; 32])); // Fallback to zeros
+                                .unwrap_or_else(|_| hex::encode([0u8; 32])); // Fallback to zeros
 
                             info!(target: LOG_TARGET,
                                 "🎉 GPU {} FOUND SHARE! Nonce: {} Difficulty: {} ({}% intensity)",
@@ -488,7 +487,7 @@ impl GpuManager {
                         if job.extranonce2.is_some() {
                             // Preserve "pool nonce" in lower 16 bits while incrementing upper bits
                             let pool_prefix = nonce_offset & 0xFFFF; // Extract pool (lower 16 bits)
-                            let upper_bits = (nonce_offset >> 16) + hashes_processed as u64; // Increment upper bits
+                            let upper_bits = (nonce_offset >> 16) + hashes_processed; // Increment upper bits
                             nonce_offset = pool_prefix | (upper_bits << 16); // Combine: preserve pool prefix + incremented upper bits
                         }
                     }
@@ -556,7 +555,7 @@ impl GpuManager {
                             .unwrap_or_else(|_| "Unknown".to_string());
                         let vendor = GpuVendor::from_str(vendor);
 
-                        let device = GpuInformationFileDevice {
+                        GpuInformationFileDevice {
                             name: device.name().to_string(),
                             device_id: device.device_id(),
                             platform_name: device.platform_name().to_string(),
@@ -565,9 +564,7 @@ impl GpuManager {
                             max_compute_units: device.max_compute_units(),
                             global_mem_size: device.global_mem_size(),
                             device_type: device.device_type().clone(),
-                        };
-
-                        device
+                        }
                     })
                     .collect();
 

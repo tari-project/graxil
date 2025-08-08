@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use tokio::net::{TcpStream, lookup_host};
 
 /// Connection information for tracking pool connectivity and performance
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ConnectionInfo {
     pub pool_address: Option<String>,
     pub resolved_address: Option<SocketAddr>,
@@ -33,20 +33,6 @@ pub struct ConnectionInfo {
     pub is_connected: bool,
     pub connection_attempts: u32,
     pub last_successful_connect: Option<Instant>,
-}
-
-impl Default for ConnectionInfo {
-    fn default() -> Self {
-        Self {
-            pool_address: None,
-            resolved_address: None,
-            connection_latency: None,
-            connected_at: None,
-            is_connected: false,
-            connection_attempts: 0,
-            last_successful_connect: None,
-        }
-    }
 }
 
 impl ConnectionInfo {
@@ -72,6 +58,12 @@ impl ConnectionInfo {
 #[derive(Clone)]
 pub struct PoolClient {
     connection_info: Arc<Mutex<ConnectionInfo>>,
+}
+
+impl Default for PoolClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PoolClient {
