@@ -483,11 +483,14 @@ impl GpuManager {
                             }
                         }
 
-                        // Advance nonce for next iteration - CONTINUOUS MINING!
-                        // Preserve "pool nonce" in lower 16 bits while incrementing upper bits
-                        let pool_prefix = nonce_offset & 0xFFFF; // Extract pool (lower 16 bits)
-                        let upper_bits = (nonce_offset >> 16) + hashes_processed as u64; // Increment upper bits
-                        nonce_offset = pool_prefix | (upper_bits << 16); // Combine: preserve pool prefix + incremented upper bits
+                        // Preserve "pool nonce" in lower 16 bits while incrementing upper bits only if extranonce2 is present
+                        // This ensures we respect the LuckyPool XN format
+                        if job.extranonce2.is_some() {
+                            // Preserve "pool nonce" in lower 16 bits while incrementing upper bits
+                            let pool_prefix = nonce_offset & 0xFFFF; // Extract pool (lower 16 bits)
+                            let upper_bits = (nonce_offset >> 16) + hashes_processed as u64; // Increment upper bits
+                            nonce_offset = pool_prefix | (upper_bits << 16); // Combine: preserve pool prefix + incremented upper bits
+                        }
                     }
                     Err(e) => {
                         error!(target: LOG_TARGET,"🎮 GPU {} mining error: {}", thread_id, e);
@@ -504,7 +507,6 @@ impl GpuManager {
                     Ok(Ok(job)) => {
                         debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
                         current_job = Some(job);
-                        // nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
                     }
                     Ok(Err(e)) => {
                         error!(target: LOG_TARGET,"🎮 GPU {} job channel error: {}", thread_id, e);
