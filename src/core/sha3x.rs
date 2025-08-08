@@ -17,13 +17,13 @@
 // - src/core/sha3x.rs (SHA3x algorithm implementation)
 // - Depends on: sha3 crate
 
-use sha3::{Digest, Sha3_256};
 use core::array;
+use sha3::{Digest, Sha3_256};
 
 /// Perform SHA3x hash (triple SHA3-256) with a nonce for mining
-pub fn sha3x_hash_with_nonce(header_template: &[u8], nonce: u64) -> Vec<u8> {
+pub fn sha3x_hash_with_nonce(header_template: &[u8], nonce: [u8; 8]) -> Vec<u8> {
     let mut input = Vec::with_capacity(header_template.len() + 9);
-    input.extend_from_slice(&nonce.to_le_bytes());
+    input.extend_from_slice(&nonce);
     input.extend_from_slice(header_template);
     input.push(1u8);
 

@@ -370,8 +370,31 @@ impl GpuManager {
             // Check for new jobs (non-blocking)
             if let Ok(job) = job_rx.try_recv() {
                 debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
-                current_job = Some(job);
-                nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                current_job = Some(job.clone());
+                info!(target: LOG_TARGET,"🎮 GPU {} got new job: {:?}", thread_id, job);
+                if job.extranonce2.is_some() {
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} received job with extranonce2 (XN): {}",
+                        thread_id, job.extranonce2.as_ref().unwrap()
+                    );
+                    nonce_offset = u16::from_le_bytes(
+                        hex::decode(job.extranonce2.as_ref().unwrap())
+                            .unwrap()
+                            .try_into()
+                            .unwrap(),
+                    ) as u64;
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} nonce offset set to XN: {}",
+                        thread_id, nonce_offset
+                    );
+                } else {
+                    info!(target: LOG_TARGET,"🎮 GPU {} received job without extranonce2", thread_id);
+                    nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
+                    info!(target: LOG_TARGET,
+                        "🎮 GPU {} nonce offset reset to: {}",
+                        thread_id, nonce_offset
+                    );
+                }
                 continue; // Immediately start mining the new job
             }
 
@@ -381,6 +404,9 @@ impl GpuManager {
                 match engine.mine(job, nonce_offset, batch_size).await {
                     Ok((found_nonce, hashes_processed, best_difficulty, new_batch_size)) => {
                         batch_size = new_batch_size;
+                        if let Some(found_nonce) = found_nonce {
+                            nonce_offset = found_nonce;
+                        }
                         // Update stats - FIXED to ensure thread_id is valid
                         if thread_id < stats.thread_stats.len() {
                             stats.thread_stats[thread_id].update_hashrate(hashes_processed as u64);
@@ -410,77 +436,11 @@ impl GpuManager {
 
                         // Submit share if found
                         if let Some(nonce) = found_nonce {
-                            // FIXED: LuckyPool XN nonce generation - proper 8-byte format
-                            let nonce_hex = if let Some(ref xn) = job.extranonce2 {
-                                // LuckyPool format: [2-byte-XN][6-byte-local] = 8 bytes total
-                                let xn_bytes = hex::decode(xn).unwrap_or_else(|_| {
-                                    warn!(target: LOG_TARGET,
-                                        "🎮 GPU {} failed to decode XN '{}', using fallback",
-                                        thread_id, xn
-                                    );
-                                    vec![0, 0] // 2-byte fallback
-                                });
-
-                                if xn_bytes.len() != 2 {
-                                    warn!(target: LOG_TARGET,
-                                        "🎮 GPU {} XN '{}' is not 2 bytes, using fallback",
-                                        thread_id, xn
-                                    );
-                                }
-
-                                // Take first 2 bytes of XN, pad if needed
-                                let xn_2bytes = if xn_bytes.len() >= 2 {
-                                    [xn_bytes[0], xn_bytes[1]]
-                                } else if xn_bytes.len() == 1 {
-                                    [xn_bytes[0], 0]
-                                } else {
-                                    [0, 0]
-                                };
-
-                                // Generate 6 bytes locally from nonce
-                                let nonce_6bytes = nonce.to_le_bytes();
-                                let local_6bytes = [
-                                    nonce_6bytes[0],
-                                    nonce_6bytes[1],
-                                    nonce_6bytes[2],
-                                    nonce_6bytes[3],
-                                    nonce_6bytes[4],
-                                    nonce_6bytes[5],
-                                ];
-
-                                // Combine XN (2 bytes) + local (6 bytes) = 8 bytes total
-                                let combined_8bytes = [
-                                    xn_2bytes[0],
-                                    xn_2bytes[1], // XN from pool
-                                    local_6bytes[0],
-                                    local_6bytes[1], // Local nonce
-                                    local_6bytes[2],
-                                    local_6bytes[3], // Local nonce
-                                    local_6bytes[4],
-                                    local_6bytes[5], // Local nonce
-                                ];
-
-                                let combined_hex = hex::encode(&combined_8bytes);
-
-                                info!(target: LOG_TARGET,
-                                    "🔧 GPU {} LuckyPool nonce: XN={}, local={}...{}, combined={}",
-                                    thread_id,
-                                    xn,
-                                    hex::encode(&local_6bytes[0..2]),
-                                    hex::encode(&local_6bytes[4..6]),
-                                    combined_hex
-                                );
-
-                                combined_hex
-                            } else {
-                                // Standard format: 8-byte nonce (no XN)
-                                let nonce_8bytes = nonce.to_le_bytes();
-                                hex::encode(&nonce_8bytes)
-                            };
+                            let nonce_hex = hex::encode(&nonce.to_le_bytes());
 
                             // Calculate the actual hash result for SHA3x using same function as CPU
                             let hash_result = engine
-                                .calculate_share_result(job, nonce)
+                                .calculate_share_result(job, nonce.to_le_bytes())
                                 .unwrap_or_else(|_| hex::encode(&[0u8; 32])); // Fallback to zeros
 
                             info!(target: LOG_TARGET,
@@ -523,13 +483,14 @@ impl GpuManager {
                             }
                         }
 
-                        // Advance nonce for next iteration - CONTINUOUS MINING!
-                        nonce_offset += hashes_processed as u64;
-
-                        // *** NO SLEEP HERE - MINE AT FULL SPEED! ***
-                        // The old code had: tokio::time::sleep(Duration::from_millis(1)).await;
-                        // This was destroying performance by limiting GPU to ~1000 kernel calls per second
-                        // Now the GPU can mine continuously at full speed!
+                        // Preserve "pool nonce" in lower 16 bits while incrementing upper bits only if extranonce2 is present
+                        // This ensures we respect the LuckyPool XN format
+                        if job.extranonce2.is_some() {
+                            // Preserve "pool nonce" in lower 16 bits while incrementing upper bits
+                            let pool_prefix = nonce_offset & 0xFFFF; // Extract pool (lower 16 bits)
+                            let upper_bits = (nonce_offset >> 16) + hashes_processed as u64; // Increment upper bits
+                            nonce_offset = pool_prefix | (upper_bits << 16); // Combine: preserve pool prefix + incremented upper bits
+                        }
                     }
                     Err(e) => {
                         error!(target: LOG_TARGET,"🎮 GPU {} mining error: {}", thread_id, e);
@@ -546,7 +507,6 @@ impl GpuManager {
                     Ok(Ok(job)) => {
                         debug!(target: LOG_TARGET,"🎮 GPU {} got new job: {}", thread_id, job.job_id);
                         current_job = Some(job);
-                        nonce_offset = thread_id as u64 * 1_000_000_000; // Reset nonce space
                     }
                     Ok(Err(e)) => {
                         error!(target: LOG_TARGET,"🎮 GPU {} job channel error: {}", thread_id, e);

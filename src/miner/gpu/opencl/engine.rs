@@ -508,7 +508,7 @@ impl OpenClEngine {
 
         debug!(target: LOG_TARGET,
             "Starting GPU mining for job: {} with nonce_start={}, batch_size={}",
-            job.job_id, nonce_start, batch_size
+            job.job_id, hex::encode(nonce_start.to_le_bytes()), batch_size
         );
         // Apply intensity delay for power/thermal management
         self.apply_intensity_delay().await;
@@ -764,7 +764,7 @@ impl OpenClEngine {
     }
 
     /// Calculate the hash result for a given nonce (for share submission)
-    pub fn calculate_share_result(&self, job: &MiningJob, nonce: u64) -> Result<String> {
+    pub fn calculate_share_result(&self, job: &MiningJob, nonce: [u8; 8]) -> Result<String> {
         // Use the exact same SHA3x algorithm as CPU
         use crate::core::sha3x::sha3x_hash_with_nonce;
 
