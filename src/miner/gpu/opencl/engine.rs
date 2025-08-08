@@ -172,6 +172,7 @@ impl OpenClEngine {
             .map_err(|e| Error::msg(format!("Failed to create kernel: {}", e)))?;
 
         // Create command queue
+        #[allow(deprecated)]
         let queue = CommandQueue::create_default(&self.context, 0)
             .map_err(|e| Error::msg(format!("Failed to create command queue: {}", e)))?;
 
