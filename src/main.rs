@@ -396,16 +396,16 @@ async fn handle_gpu_mining(args: &Args, algo: Algorithm) -> Result<()> {
     );
 
     // Start web server in background if --web flag is enabled
-        let miner_clone = gpu_miner.clone();
-        let web = args.web.clone();
-        let ws = args.ws.clone();
-        tokio::spawn(async move {
-            let stats = miner_clone.get_stats();
-            info!(target: LOG_TARGET,"🌐 Starting GPU web dashboard server...");
-            web_server::start_web_server(ws, web, stats).await;
-        });
+    let miner_clone = gpu_miner.clone();
+    let web = args.web.clone();
+    let ws = args.ws.clone();
+    tokio::spawn(async move {
+        let stats = miner_clone.get_stats();
+        info!(target: LOG_TARGET,"🌐 Starting GPU web dashboard server...");
+        web_server::start_web_server(ws, web, stats).await;
+    });
 
-        info!(target: LOG_TARGET,"🔗 WebSocket endpoint: ws://localhost:{}/ws", args.ws);
+    info!(target: LOG_TARGET,"🔗 WebSocket endpoint: ws://localhost:{}/ws", args.ws);
 
     // Start GPU mining - 385+ MH/s beast mode with correct settings!
     info!(target: LOG_TARGET,

@@ -35,14 +35,17 @@ const LOG_TARGET: &str = "tari::graxil::web_server";
 /// endpoint at ws://localhost:8080/ws for real-time data streaming
 pub async fn start_web_server(ws: usize, web_server: bool, stats: Arc<MinerStats>) {
     let mut app = Router::new()
-    .route("/ws", get(websocket_handler))
-    .with_state(stats);
+        .route("/ws", get(websocket_handler))
+        .with_state(stats);
 
     if web_server {
-        app = app.route("/", get(move || {
-            let ws = ws.clone();
-            async move { dashboard_handler(ws).await }
-        }));
+        app = app.route(
+            "/",
+            get(move || {
+                let ws = ws.clone();
+                async move { dashboard_handler(ws).await }
+            }),
+        );
         info!(target: LOG_TARGET,"📊 Real-time GPU dashboard available at: http://localhost:{}", ws);
         info!(target: LOG_TARGET,"📈 Live GPU charts accessible via the 'Live Charts' tab");
     } else {
@@ -70,10 +73,7 @@ pub async fn start_web_server(ws: usize, web_server: bool, stats: Arc<MinerStats
 /// Returns the HTML dashboard with embedded CSS and JavaScript
 async fn dashboard_handler(ws: usize) -> Html<String> {
     debug!(target: LOG_TARGET,"📄 Serving dashboard HTML");
-    Html(include_str!("dashboard.html").replace(
-        "{{GRAXIL_WS_PORT}}",
-        ws.to_string().as_str(),
-    ))
+    Html(include_str!("dashboard.html").replace("{{GRAXIL_WS_PORT}}", ws.to_string().as_str()))
 }
 
 /// WebSocket upgrade handler
