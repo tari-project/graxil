@@ -18,6 +18,7 @@
 // - Depends on: serde_json, crate::core::types
 
 use crate::core::types::Algorithm;
+use crate::utils::user_agent::user_agent;
 use log::{debug, error};
 use serde_json::{Value, json};
 
@@ -41,14 +42,14 @@ impl StratumProtocol {
                 "params": {
                     "login": wallet_address,
                     "pass": worker_name,
-                    "agent": "sha3x-miner/3.0",
+                    "agent": user_agent(),
                     "algo": ["sha3x"]
                 }
             }),
             Algorithm::Sha256 => json!({
                 "id": 1,
                 "method": "mining.subscribe",
-                "params": ["sha3x-miner/3.0"]
+                "params": [user_agent()]
             }),
         }
     }

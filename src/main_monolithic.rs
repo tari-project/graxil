@@ -32,6 +32,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info};
+use crate::utils::user_agent::user_agent;
 
 // Ratatui imports
 use crossterm::{
@@ -376,7 +377,7 @@ impl SHA3xMiner {
             "params": {
                 "login": self.wallet_address,
                 "pass": self.worker_name,
-                "agent": "sha3x-miner/3.0",
+                "agent": user_agent(),
                 "algo": "sha3x"
             }
         });

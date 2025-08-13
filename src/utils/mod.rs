@@ -18,7 +18,7 @@
 // - Submodules: format
 
 pub mod format;
-
+pub mod user_agent;
 // Changelog:
 // - v1.0.0 (2025-06-14): Extracted from monolithic main.rs.
 //   - Purpose: Defines the utils module, organizing shared utility functions
