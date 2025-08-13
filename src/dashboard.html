@@ -573,7 +573,7 @@
         // Initialize WebSocket connection
         function initWebSocket() {
             try {
-                socket = new WebSocket('ws://localhost:8080/ws');
+                socket = new WebSocket('ws://localhost:{{GRAXIL_WS_PORT}}/ws');
                 
                 socket.onopen = function() {
                     console.log('📊 Connected to SHA3x-Miner data!');

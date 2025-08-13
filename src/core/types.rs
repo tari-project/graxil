@@ -183,15 +183,23 @@ pub struct Args {
     #[arg(long, default_value = "false", help = "Enable TUI dashboard interface")]
     pub tui: bool,
 
-    /// Enable real-time web dashboard at http://localhost:8080
+    /// Enable real-time web dashboard at http://localhost:WS_PORT
     /// Provides web-based mining statistics with live charts and graphs
     /// Includes hashrate trends, thread performance, share analytics, and efficiency metrics
     #[arg(
         long,
         default_value = "false",
-        help = "Enable real-time web dashboard with live charts at http://localhost:8080"
+        help = "Enable real-time web dashboard with live charts at http://localhost:WS_PORT"
     )]
     pub web: bool,
+
+    /// Change real time websocket port.
+    #[arg(
+        long,
+        default_value = "8080",
+        help = "Change real-time web socket port"
+    )]
+    pub ws: usize,
 
     /// Run in benchmark mode (no pool connection required)
     /// Tests hardware performance and finds optimal settings
