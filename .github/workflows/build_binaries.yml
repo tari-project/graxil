@@ -404,7 +404,7 @@ jobs:
 
     steps:
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: ${{ env.TS_FILENAME }}
           pattern: "${{ env.TS_FILENAME }}*"
