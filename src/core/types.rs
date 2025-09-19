@@ -564,6 +564,9 @@ impl Args {
                         } else if wallet.contains('.') {
                             // Worker name format: ADDRESS.WORKER
                             wallet.split('.').next().unwrap_or(wallet)
+                        } else if wallet.contains('/') {
+                            // Worker name format: ADDRESS/WORKER
+                            wallet.split('/').next().unwrap_or(wallet)
                         } else {
                             // Standard format: ADDRESS
                             wallet
@@ -627,6 +630,28 @@ impl Args {
                                             .to_string(),
                                     );
                                 }
+                            } else if diff_part.contains('/') {
+                                // FORMAT: ADDRESS=DIFF/WORKER
+                                let diff_worker_parts: Vec<&str> = diff_part.split('/').collect();
+                                if diff_worker_parts.len() != 2 {
+                                    return Err("Static difficulty with worker format must be: ADDRESS=DIFF/WORKER".to_string());
+                                }
+                                // Validate difficulty is numeric (supports G, M suffixes)
+                                let diff_str = diff_worker_parts[0];
+                                if !self.is_valid_difficulty_format(diff_str) {
+                                    return Err(format!(
+                                        "Difficulty must be numeric with optional G/M suffix in ADDRESS=DIFF/WORKER format. Found: '{}'",
+                                        diff_str
+                                    ));
+                                }
+                                // Worker name validation
+                                let worker_name = diff_worker_parts[1];
+                                if worker_name.is_empty() {
+                                    return Err(
+                                        "Worker name cannot be empty in ADDRESS=DIFF/WORKER format"
+                                            .to_string(),
+                                    );
+                                }
                             } else {
                                 // FORMAT: ADDRESS=DIFF
                                 if !self.is_valid_difficulty_format(diff_part) {
@@ -647,6 +672,29 @@ impl Args {
                             let worker_name = parts[1];
                             if worker_name.is_empty() {
                                 return Err("Worker name cannot be empty in ADDRESS.WORKER format"
+                                    .to_string());
+                            }
+                            // Validate worker name contains only allowed characters
+                            if !worker_name
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                            {
+                                return Err(format!(
+                                    "Worker name can only contain letters, numbers, hyphens, and underscores. Found: '{}'",
+                                    worker_name
+                                ));
+                            }
+                        } else if wallet.contains('/') {
+                            // Worker name format validation: ADDRESS/WORKER
+                            let parts: Vec<&str> = wallet.split('/').collect();
+                            if parts.len() != 2 {
+                                return Err(
+                                    "Worker name format must be: ADDRESS/WORKER".to_string()
+                                );
+                            }
+                            let worker_name = parts[1];
+                            if worker_name.is_empty() {
+                                return Err("Worker name cannot be empty in ADDRESS/WORKER format"
                                     .to_string());
                             }
                             // Validate worker name contains only allowed characters
