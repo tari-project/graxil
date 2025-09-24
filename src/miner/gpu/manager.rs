@@ -358,7 +358,6 @@ impl GpuManager {
             thread_id, batch_size, gpu_settings.intensity
         );
         info!(target: LOG_TARGET,"🚀 PERFORMANCE FIX APPLIED: No more 1ms sleep killer!");
-        info!(target: LOG_TARGET,"🔧 LuckyPool XN nonce support enabled");
 
         debug!(target: LOG_TARGET,
             "GPU thread {} ready: stats.thread_stats.len={}",

@@ -388,7 +388,7 @@ impl GpuMiner {
         // FIXED: Handle XN (extra nonce) properly without borrow issues
         let xn_info = if let Some(ref xn) = job.xn {
             info!(target: LOG_TARGET,
-                "🔧 LuckyPool XN detected: {} (will be used as first 2 bytes of nonce)",
+                "🔧 Special XN detected: {} (will be used as first 2 bytes of nonce)",
                 xn
             );
             *LUCKY_POOL_XN.lock().await = xn.clone(); // Store XN for nonce generation
